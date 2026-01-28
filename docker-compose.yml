@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   lol-scheduler:
     build: .
@@ -8,8 +6,7 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      # Persister la base de données SQLite
-      - ./data:/app/data
+      - lol-data:/app/data
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -46,3 +43,6 @@ services:
       - ./certbot/conf:/etc/letsencrypt
     profiles:
       - with-nginx
+
+volumes:
+  lol-data:

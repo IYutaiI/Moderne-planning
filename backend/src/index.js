@@ -3,6 +3,7 @@ import cors from 'cors';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,16 +16,31 @@ app.use(cors());
 app.use(express.json());
 
 // Servir les fichiers statiques du frontend en production
-app.use(express.static(join(__dirname, '../../frontend/dist')));
+const publicPath = process.env.NODE_ENV === 'production'
+  ? join(__dirname, '../public')
+  : join(__dirname, '../../frontend/dist');
+app.use(express.static(publicPath));
 
-// Database setup
-const db = new Database(join(__dirname, '../data/lol-scheduler.db'));
+// Database setup - use /app/data in production, ../data locally
+const dataDir = process.env.NODE_ENV === 'production'
+  ? '/app/data'
+  : join(__dirname, '../data');
+
+// Creer le dossier data si necessaire
+if (!existsSync(dataDir)) {
+  mkdirSync(dataDir, { recursive: true });
+}
+
+const dbPath = join(dataDir, 'lol-scheduler.db');
+console.log(`Database path: ${dbPath}`);
+const db = new Database(dbPath);
 
 // Initialiser les tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pseudo TEXT NOT NULL,
+    riot_id TEXT,
     discord TEXT,
     role TEXT NOT NULL,
     rank TEXT,
@@ -62,6 +78,13 @@ db.exec(`
   );
 `);
 
+// Migration: ajouter riot_id si la colonne n'existe pas
+try {
+  db.exec('ALTER TABLE members ADD COLUMN riot_id TEXT');
+} catch (e) {
+  // La colonne existe deja
+}
+
 // ============ ROUTES API ============
 
 // --- Members ---
@@ -77,21 +100,21 @@ app.get('/api/members/:id', (req, res) => {
 });
 
 app.post('/api/members', (req, res) => {
-  const { pseudo, discord, role, rank, main_champions } = req.body;
+  const { pseudo, riot_id, discord, role, rank, main_champions } = req.body;
   if (!pseudo || !role) {
     return res.status(400).json({ error: 'Pseudo et rôle requis' });
   }
   const result = db.prepare(
-    'INSERT INTO members (pseudo, discord, role, rank, main_champions) VALUES (?, ?, ?, ?, ?)'
-  ).run(pseudo, discord, role, rank, main_champions);
+    'INSERT INTO members (pseudo, riot_id, discord, role, rank, main_champions) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(pseudo, riot_id, discord, role, rank, main_champions);
   res.json({ id: result.lastInsertRowid, ...req.body });
 });
 
 app.put('/api/members/:id', (req, res) => {
-  const { pseudo, discord, role, rank, main_champions } = req.body;
+  const { pseudo, riot_id, discord, role, rank, main_champions } = req.body;
   db.prepare(
-    'UPDATE members SET pseudo = ?, discord = ?, role = ?, rank = ?, main_champions = ? WHERE id = ?'
-  ).run(pseudo, discord, role, rank, main_champions, req.params.id);
+    'UPDATE members SET pseudo = ?, riot_id = ?, discord = ?, role = ?, rank = ?, main_champions = ? WHERE id = ?'
+  ).run(pseudo, riot_id, discord, role, rank, main_champions, req.params.id);
   res.json({ id: parseInt(req.params.id), ...req.body });
 });
 
@@ -219,7 +242,7 @@ app.get('/api/stats', (req, res) => {
 
 // Fallback pour SPA
 app.get('*', (req, res) => {
-  res.sendFile(join(__dirname, '../../frontend/dist/index.html'));
+  res.sendFile(join(publicPath, 'index.html'));
 });
 
 app.listen(PORT, () => {
