@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  lol-scheduler:
+    build: .
+    container_name: lol-team-scheduler
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persister la base de données SQLite
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optionnel: Nginx comme reverse proxy avec SSL
+  nginx:
+    image: nginx:alpine
+    container_name: lol-scheduler-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    depends_on:
+      - lol-scheduler
+    profiles:
+      - with-nginx
+
+  # Optionnel: Certbot pour SSL automatique
+  certbot:
+    image: certbot/certbot
+    container_name: lol-scheduler-certbot
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    profiles:
+      - with-nginx
