@@ -1,27 +1,55 @@
 import { useState, useEffect } from 'react'
-import { Calendar, ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { Calendar, Users, ChevronLeft, ChevronRight, Plus, Check, X, Minus } from 'lucide-react'
 
-const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-const HOURS = Array.from({ length: 15 }, (_, i) => `${(i + 9).toString().padStart(2, '0')}:00`)
+const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+const DAYS_SHORT = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM']
+const HOURS = Array.from({ length: 13 }, (_, i) => i + 12) // 12h à 00h
 
 function Planning() {
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [events, setEvents] = useState([])
+  const [viewMode, setViewMode] = useState('synthese') // 'agenda', 'dispo', 'synthese'
+  const [members, setMembers] = useState([])
+  const [selectedMember, setSelectedMember] = useState(null)
   const [availabilities, setAvailabilities] = useState([])
-  const [viewMode, setViewMode] = useState('week')
+  const [teamAvailabilities, setTeamAvailabilities] = useState([])
+  const [events, setEvents] = useState([])
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     fetchData()
-  }, [currentDate])
+  }, [])
+
+  useEffect(() => {
+    if (members.length > 0 && !selectedMember) {
+      setSelectedMember(members[0])
+    }
+  }, [members])
+
+  useEffect(() => {
+    if (selectedMember) {
+      fetchMemberAvailabilities(selectedMember.id)
+    }
+  }, [selectedMember])
 
   const fetchData = async () => {
     try {
-      const [eventsRes, availRes] = await Promise.all([
-        fetch('/api/events'),
-        fetch('/api/availabilities/team')
+      const [membersRes, teamAvailRes, eventsRes] = await Promise.all([
+        fetch('/api/members'),
+        fetch('/api/availabilities/team'),
+        fetch('/api/events')
       ])
+      setMembers(await membersRes.json())
+      setTeamAvailabilities(await teamAvailRes.json())
       setEvents(await eventsRes.json())
-      setAvailabilities(await availRes.json())
+    } catch (error) {
+      console.error('Erreur:', error)
+    }
+  }
+
+  const fetchMemberAvailabilities = async (memberId) => {
+    try {
+      const res = await fetch(`/api/members/${memberId}/availabilities`)
+      setAvailabilities(await res.json())
     } catch (error) {
       console.error('Erreur:', error)
     }
@@ -50,36 +78,9 @@ function Planning() {
     setCurrentDate(newDate)
   }
 
-  const getEventsForDay = (date) => {
-    const dateStr = date.toISOString().split('T')[0]
-    return events.filter(e => e.event_date === dateStr)
-  }
-
-  const getAvailabilitiesForDay = (dayIndex) => {
-    return availabilities.filter(a => a.day_of_week === dayIndex)
-  }
-
-  const getEventColor = (type) => {
-    const colors = {
-      training: 'bg-lol-blue-500/30 border-lol-blue-500 text-lol-blue-300',
-      match: 'bg-red-500/30 border-red-500 text-red-300',
-      tournament: 'bg-lol-gold-500/30 border-lol-gold-500 text-lol-gold-300',
-      review: 'bg-purple-500/30 border-purple-500 text-purple-300'
-    }
-    return colors[type] || 'bg-gray-500/30 border-gray-500 text-gray-300'
-  }
-
-  const formatWeekRange = () => {
+  const formatWeekLabel = () => {
     const start = weekDates[0]
-    const end = weekDates[6]
-    const startMonth = start.toLocaleDateString('fr-FR', { month: 'short' })
-    const endMonth = end.toLocaleDateString('fr-FR', { month: 'short' })
-    const year = start.getFullYear()
-
-    if (startMonth === endMonth) {
-      return `${start.getDate()} - ${end.getDate()} ${startMonth} ${year}`
-    }
-    return `${start.getDate()} ${startMonth} - ${end.getDate()} ${endMonth} ${year}`
+    return `${start.getDate()} ${start.toLocaleDateString('fr-FR', { month: 'long' })}`
   }
 
   const isToday = (date) => {
@@ -87,163 +88,517 @@ function Planning() {
     return date.toDateString() === today.toDateString()
   }
 
+  // Check if member is available at specific day/hour
+  const isMemberAvailable = (memberId, dayIndex, hour) => {
+    const avails = memberId === selectedMember?.id ? availabilities :
+      teamAvailabilities.filter(a => a.member_id === memberId)
+
+    return avails.some(a => {
+      if (a.day_of_week !== dayIndex) return false
+      const startHour = parseInt(a.start_time.split(':')[0])
+      const endHour = parseInt(a.end_time.split(':')[0]) || 24
+      return hour >= startHour && hour < endHour
+    })
+  }
+
+  // Get availability count for team at specific day/hour
+  const getTeamAvailabilityCount = (dayIndex, hour) => {
+    let count = 0
+    members.forEach(member => {
+      if (isMemberAvailable(member.id, dayIndex, hour)) count++
+    })
+    return count
+  }
+
+  // Toggle availability for current member
+  const toggleAvailability = async (dayIndex, hour) => {
+    if (!selectedMember) return
+
+    const isAvailable = isMemberAvailable(selectedMember.id, dayIndex, hour)
+
+    if (isAvailable) {
+      // Find and delete the availability
+      const avail = availabilities.find(a => {
+        if (a.day_of_week !== dayIndex) return false
+        const startHour = parseInt(a.start_time.split(':')[0])
+        const endHour = parseInt(a.end_time.split(':')[0]) || 24
+        return hour >= startHour && hour < endHour
+      })
+      if (avail) {
+        await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+      }
+    } else {
+      // Add new availability for this hour
+      await fetch(`/api/members/${selectedMember.id}/availabilities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day_of_week: dayIndex,
+          start_time: `${hour.toString().padStart(2, '0')}:00`,
+          end_time: `${((hour + 1) % 24).toString().padStart(2, '0')}:00`
+        })
+      })
+    }
+
+    fetchMemberAvailabilities(selectedMember.id)
+    fetchData()
+  }
+
+  // Get events for a specific date
+  const getEventsForDate = (date) => {
+    const dateStr = date.toISOString().split('T')[0]
+    return events.filter(e => e.event_date === dateStr)
+  }
+
+  // Get event at specific hour
+  const getEventAtHour = (date, hour) => {
+    const dayEvents = getEventsForDate(date)
+    return dayEvents.find(e => {
+      const startHour = parseInt(e.start_time.split(':')[0])
+      const endHour = parseInt(e.end_time.split(':')[0])
+      return hour >= startHour && hour < endHour
+    })
+  }
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Planning</h1>
-          <p className="text-lol-dark-400">Vue hebdomadaire de l'équipe</p>
+        <div className="flex items-center gap-3">
+          <Calendar className="w-6 h-6 text-lol-blue-400" />
+          <h1 className="text-2xl font-bold text-white">Systeme de Planning Team</h1>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-lol-dark-800 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('week')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                viewMode === 'week'
-                  ? 'bg-lol-blue-500 text-white'
-                  : 'text-lol-dark-400 hover:text-white'
-              }`}
-            >
-              Semaine
-            </button>
-            <button
-              onClick={() => setViewMode('month')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                viewMode === 'month'
-                  ? 'bg-lol-blue-500 text-white'
-                  : 'text-lol-dark-400 hover:text-white'
-              }`}
-            >
-              Mois
-            </button>
-          </div>
+        {/* View Tabs */}
+        <div className="flex items-center gap-1 bg-lol-dark-800 rounded-lg p-1">
+          <button
+            onClick={() => setViewMode('agenda')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'agenda'
+                ? 'bg-lol-dark-700 text-white'
+                : 'text-lol-dark-400 hover:text-white'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            Agenda
+          </button>
+          <button
+            onClick={() => setViewMode('dispo')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'dispo'
+                ? 'bg-purple-600 text-white'
+                : 'text-lol-dark-400 hover:text-white'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Dispo
+          </button>
+          <button
+            onClick={() => setViewMode('synthese')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'synthese'
+                ? 'bg-purple-600 text-white'
+                : 'text-lol-dark-400 hover:text-white'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Synthese
+          </button>
         </div>
       </div>
 
-      {/* Calendar Navigation */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
+      {/* Week Navigation & Actions */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 bg-lol-dark-800 rounded-lg px-4 py-2">
           <button
             onClick={() => navigateWeek(-1)}
-            className="p-2 rounded-lg bg-lol-dark-700 hover:bg-lol-dark-600 text-white transition-colors"
+            className="p-1 rounded hover:bg-lol-dark-700 text-lol-dark-400 hover:text-white transition-colors"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-
-          <div className="flex items-center gap-3">
-            <Calendar className="w-5 h-5 text-lol-blue-400" />
-            <span className="text-lg font-semibold text-white">{formatWeekRange()}</span>
+          <div className="text-center min-w-[140px]">
+            <p className="text-xs text-purple-400 font-medium">SEMAINE DE</p>
+            <p className="text-white font-semibold">{formatWeekLabel()}</p>
           </div>
-
           <button
             onClick={() => navigateWeek(1)}
-            className="p-2 rounded-lg bg-lol-dark-700 hover:bg-lol-dark-600 text-white transition-colors"
+            className="p-1 rounded hover:bg-lol-dark-700 text-lol-dark-400 hover:text-white transition-colors"
           >
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Week Grid */}
-        <div className="grid grid-cols-8 gap-px bg-lol-dark-700 rounded-xl overflow-hidden">
-          {/* Time column header */}
-          <div className="bg-lol-dark-800 p-3">
-            <Clock className="w-4 h-4 text-lol-dark-500 mx-auto" />
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 px-6 py-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Planifier
+        </button>
+      </div>
+
+      {/* Dispo View - Per Member */}
+      {viewMode === 'dispo' && (
+        <div className="flex gap-6">
+          {/* Member List */}
+          <div className="w-56 space-y-2">
+            {members.map(member => (
+              <button
+                key={member.id}
+                onClick={() => setSelectedMember(member)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  selectedMember?.id === member.id
+                    ? 'bg-lol-dark-700 border border-purple-500/50'
+                    : 'bg-lol-dark-800/50 hover:bg-lol-dark-700/50'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-full bg-lol-dark-600 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-lol-dark-400" />
+                </div>
+                <span className="font-medium text-white">{member.pseudo}</span>
+              </button>
+            ))}
+
+            {/* Legend */}
+            <div className="mt-6 p-4 bg-lol-dark-800/50 rounded-xl">
+              <p className="text-xs text-lol-dark-500 uppercase mb-3">Legende</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-green-500/30 border border-green-500"></div>
+                  <span className="text-sm text-lol-dark-300">Disponible</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-yellow-500/30 border border-yellow-500"></div>
+                  <span className="text-sm text-lol-dark-300">Pas sur (Jaune)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-red-500/30 border border-red-500"></div>
+                  <span className="text-sm text-lol-dark-300">Indisponible</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Day headers */}
-          {weekDates.map((date, index) => (
-            <div
-              key={index}
-              className={`bg-lol-dark-800 p-3 text-center ${
-                isToday(date) ? 'bg-lol-blue-500/20' : ''
-              }`}
-            >
-              <p className="text-sm text-lol-dark-400">{DAYS[index]}</p>
-              <p className={`text-lg font-bold ${
-                isToday(date) ? 'text-lol-blue-400' : 'text-white'
-              }`}>
-                {date.getDate()}
-              </p>
+          {/* Availability Grid */}
+          <div className="flex-1 bg-lol-dark-800/30 rounded-xl overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-lol-dark-700">
+                  <th className="text-left text-sm text-lol-dark-400 p-3 w-32">JOUR</th>
+                  {HOURS.map(hour => (
+                    <th key={hour} className="text-center text-xs text-lol-dark-500 p-2 w-12">
+                      {hour === 24 ? '00h' : `${hour}h`}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {DAYS.map((day, dayIndex) => (
+                  <tr key={day} className="border-b border-lol-dark-700/50">
+                    <td className="text-sm text-lol-dark-300 p-3 font-medium">{day}</td>
+                    {HOURS.map(hour => {
+                      const isAvailable = selectedMember && isMemberAvailable(selectedMember.id, dayIndex, hour)
+                      return (
+                        <td key={hour} className="p-1">
+                          <button
+                            onClick={() => toggleAvailability(dayIndex, hour)}
+                            className={`w-full h-8 rounded flex items-center justify-center transition-all ${
+                              isAvailable
+                                ? 'bg-green-500/30 hover:bg-green-500/40'
+                                : 'hover:bg-lol-dark-700'
+                            }`}
+                          >
+                            {isAvailable && (
+                              <Check className="w-4 h-4 text-green-400" />
+                            )}
+                          </button>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Synthese View - Team Overview */}
+      {viewMode === 'synthese' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">Synthese Equipe</h2>
+              <p className="text-sm text-lol-dark-400">Apercu rapide des creneaux (12h - 00h).</p>
             </div>
-          ))}
-
-          {/* Time slots */}
-          {HOURS.map((hour, hourIndex) => (
-            <>
-              {/* Time label */}
-              <div key={`time-${hour}`} className="bg-lol-dark-900 p-2 text-center">
-                <span className="text-xs text-lol-dark-500">{hour}</span>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="text-lol-dark-400">5+ Dispo</span>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                <span className="text-lol-dark-400">Activite</span>
+              </div>
+            </div>
+          </div>
 
-              {/* Day cells */}
-              {weekDates.map((date, dayIndex) => {
-                const dayEvents = getEventsForDay(date).filter(e => {
-                  const eventHour = parseInt(e.start_time.split(':')[0])
-                  return eventHour === hourIndex + 9
-                })
-                const dayAvail = getAvailabilitiesForDay(dayIndex).filter(a => {
-                  const startHour = parseInt(a.start_time.split(':')[0])
-                  const endHour = parseInt(a.end_time.split(':')[0])
-                  return hourIndex + 9 >= startHour && hourIndex + 9 < endHour
-                })
+          {/* Week Header */}
+          <div className="grid grid-cols-8 gap-2">
+            <div></div>
+            {weekDates.map((date, idx) => (
+              <div
+                key={idx}
+                className={`text-center p-3 rounded-xl ${
+                  isToday(date)
+                    ? 'bg-purple-600/20 border border-purple-500/50'
+                    : 'bg-lol-dark-800/50'
+                }`}
+              >
+                <p className="text-xs text-lol-dark-400">{DAYS_SHORT[idx]}</p>
+                <p className={`text-xl font-bold ${isToday(date) ? 'text-purple-400' : 'text-white'}`}>
+                  {date.getDate()}
+                </p>
+                <p className="text-xs text-lol-dark-500">
+                  {date.toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase()}
+                </p>
+              </div>
+            ))}
+          </div>
 
+          {/* Time Grid */}
+          <div className="bg-lol-dark-800/30 rounded-xl overflow-hidden">
+            {HOURS.map(hour => (
+              <div key={hour} className="grid grid-cols-8 gap-px border-b border-lol-dark-700/30">
+                <div className="p-2 text-sm text-lol-dark-500 flex items-center">
+                  {hour}:00
+                </div>
+                {weekDates.map((date, dayIdx) => {
+                  const count = getTeamAvailabilityCount(dayIdx, hour)
+                  const event = getEventAtHour(date, hour)
+                  const isFullTeam = count >= 5
+
+                  return (
+                    <div
+                      key={dayIdx}
+                      className={`relative min-h-[50px] p-2 ${
+                        event
+                          ? 'bg-purple-600/30'
+                          : isFullTeam
+                          ? 'bg-green-500/20'
+                          : ''
+                      }`}
+                    >
+                      {event ? (
+                        <div className="absolute inset-1 bg-purple-600/50 rounded-lg p-2 border border-purple-500/50">
+                          <p className="text-xs font-bold text-white">{hour}h</p>
+                          <p className="text-xs text-white truncate">{event.title.toUpperCase()}</p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-lol-dark-500">{hour}h</span>
+                          <span className={`font-medium ${
+                            isFullTeam ? 'text-green-400' : 'text-lol-dark-500'
+                          }`}>
+                            {count}/{members.length || 5}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Agenda View */}
+      {viewMode === 'agenda' && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-white">Evenements de la semaine</h2>
+
+          {events.length === 0 ? (
+            <div className="text-center py-12 bg-lol-dark-800/30 rounded-xl">
+              <Calendar className="w-16 h-16 text-lol-dark-600 mx-auto mb-4" />
+              <p className="text-lol-dark-400">Aucun evenement planifie</p>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg"
+              >
+                Creer un evenement
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-4">
+              {weekDates.map((date, idx) => {
+                const dayEvents = getEventsForDate(date)
                 return (
-                  <div
-                    key={`${date}-${hour}`}
-                    className={`bg-lol-dark-900 p-1 min-h-[60px] relative ${
-                      isToday(date) ? 'bg-lol-blue-500/5' : ''
-                    } ${dayAvail.length > 0 ? 'bg-green-500/10' : ''}`}
-                  >
-                    {dayEvents.map((event) => (
-                      <div
-                        key={event.id}
-                        className={`text-xs p-1.5 rounded border-l-2 ${getEventColor(event.event_type)} mb-1`}
-                      >
-                        <p className="font-medium truncate">{event.title}</p>
-                        <p className="text-[10px] opacity-75">
-                          {event.start_time} - {event.end_time}
-                        </p>
-                      </div>
-                    ))}
-                    {dayAvail.length > 0 && dayEvents.length === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[10px] text-green-500/50">
-                          {dayAvail.length} dispo
-                        </span>
-                      </div>
-                    )}
+                  <div key={idx} className="space-y-2">
+                    <div className={`text-center p-2 rounded-lg ${
+                      isToday(date) ? 'bg-purple-600' : 'bg-lol-dark-800'
+                    }`}>
+                      <p className="text-xs text-lol-dark-400">{DAYS_SHORT[idx]}</p>
+                      <p className="text-lg font-bold text-white">{date.getDate()}</p>
+                    </div>
+                    <div className="space-y-2">
+                      {dayEvents.map(event => (
+                        <div
+                          key={event.id}
+                          className="p-3 rounded-lg bg-purple-600/30 border border-purple-500/30"
+                        >
+                          <p className="text-xs text-purple-300">{event.start_time}</p>
+                          <p className="text-sm font-medium text-white">{event.title}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )
               })}
-            </>
-          ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Event Modal */}
+      {isModalOpen && (
+        <EventModal
+          onClose={() => setIsModalOpen(false)}
+          onSave={() => {
+            fetchData()
+            setIsModalOpen(false)
+          }}
+          members={members}
+        />
+      )}
+    </div>
+  )
+}
+
+// Event Creation Modal
+function EventModal({ onClose, onSave, members }) {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    event_type: 'training',
+    event_date: new Date().toISOString().split('T')[0],
+    start_time: '20:00',
+    end_time: '22:00',
+    participant_ids: []
+  })
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    try {
+      await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      })
+      onSave()
+    } catch (error) {
+      console.error('Erreur:', error)
+    }
+  }
+
+  const eventTypes = [
+    { value: 'training', label: 'Entrainement' },
+    { value: 'scrim', label: 'Scrim' },
+    { value: 'match', label: 'Match Officiel' },
+    { value: 'review', label: 'VOD Review' },
+    { value: 'tournament', label: 'Tournoi' }
+  ]
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-lol-dark-800 rounded-2xl border border-lol-dark-600 w-full max-w-md animate-fadeIn">
+        <div className="flex items-center justify-between p-6 border-b border-lol-dark-700">
+          <h2 className="text-xl font-bold text-white">Planifier un evenement</h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-lol-dark-700 text-lol-dark-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Legend */}
-        <div className="flex items-center gap-6 mt-6 pt-6 border-t border-lol-dark-700">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-lol-blue-500/30 border border-lol-blue-500"></div>
-            <span className="text-sm text-lol-dark-400">Entraînement</span>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-lol-dark-300 mb-2">Titre *</label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="input"
+              placeholder="Ex: Scrim vs G2 Academy"
+              required
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-red-500/30 border border-red-500"></div>
-            <span className="text-sm text-lol-dark-400">Match</span>
+
+          <div>
+            <label className="block text-sm font-medium text-lol-dark-300 mb-2">Type</label>
+            <select
+              value={formData.event_type}
+              onChange={(e) => setFormData({ ...formData, event_type: e.target.value })}
+              className="select"
+            >
+              {eventTypes.map(type => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-lol-gold-500/30 border border-lol-gold-500"></div>
-            <span className="text-sm text-lol-dark-400">Tournoi</span>
+
+          <div>
+            <label className="block text-sm font-medium text-lol-dark-300 mb-2">Date *</label>
+            <input
+              type="date"
+              value={formData.event_date}
+              onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
+              className="input"
+              required
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-purple-500/30 border border-purple-500"></div>
-            <span className="text-sm text-lol-dark-400">Review</span>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-lol-dark-300 mb-2">Debut</label>
+              <input
+                type="time"
+                value={formData.start_time}
+                onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-lol-dark-300 mb-2">Fin</label>
+              <input
+                type="time"
+                value={formData.end_time}
+                onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                className="input"
+              />
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-green-500/20"></div>
-            <span className="text-sm text-lol-dark-400">Disponibilités</span>
+
+          <div>
+            <label className="block text-sm font-medium text-lol-dark-300 mb-2">Description</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="input min-h-[80px]"
+              placeholder="Details de l'evenement..."
+            />
           </div>
-        </div>
+
+          <div className="flex gap-3 pt-4">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">
+              Annuler
+            </button>
+            <button type="submit" className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium">
+              Planifier
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
