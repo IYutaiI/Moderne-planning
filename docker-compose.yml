@@ -16,9 +16,6 @@ services:
       timeout: 10s
       retries: 3
 
-volumes:
-  lol-data:
-
   # Optionnel: Nginx comme reverse proxy avec SSL
   nginx:
     image: nginx:alpine
@@ -46,3 +43,6 @@ volumes:
       - ./certbot/conf:/etc/letsencrypt
     profiles:
       - with-nginx
+
+volumes:
+  lol-data:
