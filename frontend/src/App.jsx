@@ -1,10 +1,11 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
-import Dashboard from './pages/Dashboard'
 import Members from './pages/Members'
 import Planning from './pages/Planning'
-import Events from './pages/Events'
-import Availabilities from './pages/Availabilities'
+import Scrims from './pages/Scrims'
+import Compositions from './pages/Compositions'
+import DraftSimulation from './pages/DraftSimulation'
+import Stats from './pages/Stats'
 
 function App() {
   return (
@@ -12,11 +13,13 @@ function App() {
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/members" replace />} />
           <Route path="/members" element={<Members />} />
           <Route path="/planning" element={<Planning />} />
-          <Route path="/events" element={<Events />} />
-          <Route path="/availabilities" element={<Availabilities />} />
+          <Route path="/scrims" element={<Scrims />} />
+          <Route path="/compositions" element={<Compositions />} />
+          <Route path="/draft" element={<DraftSimulation />} />
+          <Route path="/stats" element={<Stats />} />
         </Routes>
       </main>
     </div>
