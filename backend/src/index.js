@@ -40,6 +40,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pseudo TEXT NOT NULL,
+    riot_id TEXT,
     discord TEXT,
     role TEXT NOT NULL,
     rank TEXT,
@@ -77,6 +78,13 @@ db.exec(`
   );
 `);
 
+// Migration: ajouter riot_id si la colonne n'existe pas
+try {
+  db.exec('ALTER TABLE members ADD COLUMN riot_id TEXT');
+} catch (e) {
+  // La colonne existe deja
+}
+
 // ============ ROUTES API ============
 
 // --- Members ---
@@ -92,21 +100,21 @@ app.get('/api/members/:id', (req, res) => {
 });
 
 app.post('/api/members', (req, res) => {
-  const { pseudo, discord, role, rank, main_champions } = req.body;
+  const { pseudo, riot_id, discord, role, rank, main_champions } = req.body;
   if (!pseudo || !role) {
     return res.status(400).json({ error: 'Pseudo et rôle requis' });
   }
   const result = db.prepare(
-    'INSERT INTO members (pseudo, discord, role, rank, main_champions) VALUES (?, ?, ?, ?, ?)'
-  ).run(pseudo, discord, role, rank, main_champions);
+    'INSERT INTO members (pseudo, riot_id, discord, role, rank, main_champions) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(pseudo, riot_id, discord, role, rank, main_champions);
   res.json({ id: result.lastInsertRowid, ...req.body });
 });
 
 app.put('/api/members/:id', (req, res) => {
-  const { pseudo, discord, role, rank, main_champions } = req.body;
+  const { pseudo, riot_id, discord, role, rank, main_champions } = req.body;
   db.prepare(
-    'UPDATE members SET pseudo = ?, discord = ?, role = ?, rank = ?, main_champions = ? WHERE id = ?'
-  ).run(pseudo, discord, role, rank, main_champions, req.params.id);
+    'UPDATE members SET pseudo = ?, riot_id = ?, discord = ?, role = ?, rank = ?, main_champions = ? WHERE id = ?'
+  ).run(pseudo, riot_id, discord, role, rank, main_champions, req.params.id);
   res.json({ id: parseInt(req.params.id), ...req.body });
 });
 
