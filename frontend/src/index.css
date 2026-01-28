@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #010a13 0%, #0a1628 50%, #091428 100%);
+  min-height: 100vh;
+  color: #e6e6e6;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d0d10;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0073e6;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1a8cff;
+}
+
+/* Animations */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 115, 230, 0.5), 0 0 10px rgba(0, 115, 230, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(0, 115, 230, 0.8), 0 0 20px rgba(0, 115, 230, 0.5);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(13, 13, 16, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 115, 230, 0.2);
+}
+
+.glass-gold {
+  background: rgba(13, 13, 16, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(230, 172, 0, 0.3);
+}
+
+/* Role colors */
+.role-top { color: #ff6b6b; }
+.role-jungle { color: #4ecdc4; }
+.role-mid { color: #45b7d1; }
+.role-adc { color: #f7dc6f; }
+.role-support { color: #bb8fce; }
+
+/* Rank badges */
+.rank-iron { background: linear-gradient(135deg, #5c5c5c, #8c8c8c); }
+.rank-bronze { background: linear-gradient(135deg, #8b4513, #cd853f); }
+.rank-silver { background: linear-gradient(135deg, #a8a8a8, #d4d4d4); }
+.rank-gold { background: linear-gradient(135deg, #ffd700, #ffec8b); }
+.rank-platinum { background: linear-gradient(135deg, #4aa7a0, #7ed4ad); }
+.rank-emerald { background: linear-gradient(135deg, #2e8b57, #50c878); }
+.rank-diamond { background: linear-gradient(135deg, #6a5acd, #b0c4de); }
+.rank-master { background: linear-gradient(135deg, #9932cc, #da70d6); }
+.rank-grandmaster { background: linear-gradient(135deg, #dc143c, #ff6b6b); }
+.rank-challenger { background: linear-gradient(135deg, #00bfff, #87ceeb); }
+
+/* Button styles */
+.btn-primary {
+  @apply px-4 py-2 bg-lol-blue-500 hover:bg-lol-blue-400 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg hover:shadow-lol-blue-500/25;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-lol-dark-700 hover:bg-lol-dark-600 text-white rounded-lg font-medium transition-all duration-200 border border-lol-dark-500;
+}
+
+.btn-gold {
+  @apply px-4 py-2 bg-gradient-to-r from-lol-gold-600 to-lol-gold-500 hover:from-lol-gold-500 hover:to-lol-gold-400 text-lol-dark-900 rounded-lg font-semibold transition-all duration-200;
+}
+
+/* Card styles */
+.card {
+  @apply bg-lol-dark-800/80 backdrop-blur-sm rounded-xl border border-lol-dark-600 p-6 transition-all duration-300 hover:border-lol-blue-500/50;
+}
+
+/* Input styles */
+.input {
+  @apply w-full px-4 py-2 bg-lol-dark-900 border border-lol-dark-600 rounded-lg text-white placeholder-lol-dark-400 focus:outline-none focus:border-lol-blue-500 transition-colors;
+}
+
+.select {
+  @apply w-full px-4 py-2 bg-lol-dark-900 border border-lol-dark-600 rounded-lg text-white focus:outline-none focus:border-lol-blue-500 transition-colors cursor-pointer;
+}

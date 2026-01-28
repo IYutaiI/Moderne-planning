@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0073e6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#005bb3;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffc61a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e6ac00;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="45" fill="url(#grad1)" />
+
+  <!-- Inner decoration -->
+  <circle cx="50" cy="50" r="38" fill="none" stroke="url(#grad2)" stroke-width="2" opacity="0.5"/>
+
+  <!-- Controller icon stylized -->
+  <path d="M30 45 Q30 35 40 35 L60 35 Q70 35 70 45 L70 55 Q70 65 60 65 L40 65 Q30 65 30 55 Z"
+        fill="#0d0d10" opacity="0.8"/>
+
+  <!-- D-pad -->
+  <rect x="35" y="47" width="8" height="3" rx="1" fill="#e6e6e6"/>
+  <rect x="37" y="45" width="3" height="8" rx="1" fill="#e6e6e6"/>
+
+  <!-- Buttons -->
+  <circle cx="58" cy="48" r="2.5" fill="#ff6b6b"/>
+  <circle cx="63" cy="52" r="2.5" fill="#4ecdc4"/>
+  <circle cx="58" cy="56" r="2.5" fill="#ffd24d"/>
+  <circle cx="53" cy="52" r="2.5" fill="#bb8fce"/>
+
+  <!-- Calendar lines -->
+  <line x1="42" y1="40" x2="58" y2="40" stroke="url(#grad2)" stroke-width="2" stroke-linecap="round"/>
+</svg>
