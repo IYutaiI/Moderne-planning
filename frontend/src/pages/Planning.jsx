@@ -25,8 +25,8 @@ function Planning() {
   }, [])
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    fetchData(getWeekStartString())
+  }, [currentDate])
 
   useEffect(() => {
     if (members.length > 0 && !selectedMember) {
@@ -36,15 +36,16 @@ function Planning() {
 
   useEffect(() => {
     if (selectedMember) {
-      fetchMemberAvailabilities(selectedMember.id)
+      fetchMemberAvailabilities(selectedMember.id, getWeekStartString())
     }
-  }, [selectedMember])
+  }, [selectedMember, currentDate])
 
-  const fetchData = async () => {
+  const fetchData = async (weekStart = null) => {
+    const week = weekStart || getWeekStartString()
     try {
       const [membersRes, teamAvailRes, eventsRes] = await Promise.all([
         fetch('/api/members'),
-        fetch('/api/availabilities/team'),
+        fetch(`/api/availabilities/team?week_start=${week}`),
         fetch('/api/events')
       ])
       setMembers(await membersRes.json())
@@ -55,9 +56,10 @@ function Planning() {
     }
   }
 
-  const fetchMemberAvailabilities = async (memberId) => {
+  const fetchMemberAvailabilities = async (memberId, weekStart = null) => {
+    const week = weekStart || getWeekStartString()
     try {
-      const res = await fetch(`/api/members/${memberId}/availabilities`)
+      const res = await fetch(`/api/members/${memberId}/availabilities?week_start=${week}`)
       setAvailabilities(await res.json())
     } catch (error) {
       console.error('Erreur:', error)
@@ -80,6 +82,24 @@ function Planning() {
   }
 
   const weekDates = getWeekDates()
+
+  // Get week start string (YYYY-MM-DD format for Monday)
+  const getWeekStartString = (date = currentDate) => {
+    const d = new Date(date)
+    const day = d.getDay()
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+    d.setDate(diff)
+    return d.toISOString().split('T')[0]
+  }
+
+  const currentWeekStart = getWeekStartString()
+
+  // Get previous week start
+  const getPreviousWeekStart = () => {
+    const d = new Date(currentDate)
+    d.setDate(d.getDate() - 7)
+    return getWeekStartString(d)
+  }
 
   const navigateWeek = (direction) => {
     const newDate = new Date(currentDate)
@@ -155,7 +175,8 @@ function Planning() {
           day_of_week: dayIndex,
           start_time: `${hour.toString().padStart(2, '0')}:00`,
           end_time: `${((hour + 1) % 24).toString().padStart(2, '0')}:00`,
-          status: selectedTool
+          status: selectedTool,
+          week_start: getWeekStartString()
         })
       })
     } else {
@@ -211,13 +232,46 @@ function Planning() {
           day_of_week: avail.day_of_week,
           start_time: avail.start_time,
           end_time: avail.end_time,
-          status: avail.status || 'available'
+          status: avail.status || 'available',
+          week_start: getWeekStartString()
         })
       })
     }
 
-    fetchMemberAvailabilities(selectedMember.id)
-    fetchData()
+    fetchMemberAvailabilities(selectedMember.id, getWeekStartString())
+    fetchData(getWeekStartString())
+  }
+
+  // Copy availabilities from previous week
+  const copyFromPreviousWeek = async () => {
+    if (!selectedMember) return
+
+    const prevWeek = getPreviousWeekStart()
+    const currentWeek = getWeekStartString()
+
+    try {
+      const res = await fetch(`/api/members/${selectedMember.id}/availabilities/copy-week`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_week: prevWeek,
+          to_week: currentWeek
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || 'Erreur lors de la copie')
+        return
+      }
+
+      fetchMemberAvailabilities(selectedMember.id, currentWeek)
+      fetchData(currentWeek)
+    } catch (error) {
+      console.error('Erreur:', error)
+      alert('Erreur lors de la copie de la semaine precedente')
+    }
   }
 
   // Get events for a specific date
@@ -416,9 +470,18 @@ function Planning() {
                   <span className="text-white font-medium">Disponibilites de: <span className="text-purple-400">{selectedMember.pseudo}</span></span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Copy from previous week */}
+                  <button
+                    onClick={copyFromPreviousWeek}
+                    className="flex items-center gap-2 px-4 py-3 bg-purple-600/20 border border-purple-500/50 rounded-xl hover:bg-purple-600/30 transition-colors"
+                    title="Copier la semaine d'avant"
+                  >
+                    <RotateCcw className="w-5 h-5 text-purple-400" />
+                    <span className="text-sm text-purple-400 font-medium">Copier semaine precedente</span>
+                  </button>
                   {/* Copy from another member */}
                   <div className="relative group">
-                    <button className="p-3 bg-blue-600/20 border border-blue-500/50 rounded-xl hover:bg-blue-600/30 transition-colors">
+                    <button className="p-3 bg-blue-600/20 border border-blue-500/50 rounded-xl hover:bg-blue-600/30 transition-colors" title="Copier depuis un membre">
                       <Copy className="w-5 h-5 text-blue-400" />
                     </button>
                     <div className="absolute right-0 top-full mt-2 w-48 bg-lol-dark-800 border border-lol-dark-600 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
