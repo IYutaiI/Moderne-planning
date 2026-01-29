@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom'
 import {
   Users,
   Calendar,
-  Swords,
   Layers,
   Wand2,
   BarChart3,
@@ -12,7 +11,6 @@ import {
 const navItems = [
   { path: '/members', icon: Users, label: 'Roster' },
   { path: '/planning', icon: Calendar, label: 'Planning' },
-  { path: '/scrims', icon: Swords, label: 'Scrims' },
   { path: '/compositions', icon: Layers, label: 'Compositions' },
   { path: '/draft', icon: Wand2, label: 'Draft Simulation' },
   { path: '/stats', icon: BarChart3, label: 'Statistiques' },

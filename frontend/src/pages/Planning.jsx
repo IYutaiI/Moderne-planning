@@ -88,17 +88,25 @@ function Planning() {
     return date.toDateString() === today.toDateString()
   }
 
-  // Check if member is available at specific day/hour
-  const isMemberAvailable = (memberId, dayIndex, hour) => {
+  // Get member availability status at specific day/hour (returns status or null)
+  const getMemberAvailabilityStatus = (memberId, dayIndex, hour) => {
     const avails = memberId === selectedMember?.id ? availabilities :
       teamAvailabilities.filter(a => a.member_id === memberId)
 
-    return avails.some(a => {
+    const avail = avails.find(a => {
       if (a.day_of_week !== dayIndex) return false
       const startHour = parseInt(a.start_time.split(':')[0])
       const endHour = parseInt(a.end_time.split(':')[0]) || 24
       return hour >= startHour && hour < endHour
     })
+
+    return avail ? (avail.status || 'available') : null
+  }
+
+  // Check if member is available at specific day/hour (for team count)
+  const isMemberAvailable = (memberId, dayIndex, hour) => {
+    const status = getMemberAvailabilityStatus(memberId, dayIndex, hour)
+    return status === 'available'
   }
 
   // Get availability count for team at specific day/hour
@@ -110,34 +118,49 @@ function Planning() {
     return count
   }
 
-  // Toggle availability for current member
+  // Toggle availability for current member (cycles: none -> available -> maybe -> unavailable -> none)
   const toggleAvailability = async (dayIndex, hour) => {
     if (!selectedMember) return
 
-    const isAvailable = isMemberAvailable(selectedMember.id, dayIndex, hour)
+    const currentStatus = getMemberAvailabilityStatus(selectedMember.id, dayIndex, hour)
 
-    if (isAvailable) {
-      // Find and delete the availability
-      const avail = availabilities.find(a => {
-        if (a.day_of_week !== dayIndex) return false
-        const startHour = parseInt(a.start_time.split(':')[0])
-        const endHour = parseInt(a.end_time.split(':')[0]) || 24
-        return hour >= startHour && hour < endHour
-      })
-      if (avail) {
-        await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
-      }
-    } else {
-      // Add new availability for this hour
+    // Find existing availability for this slot
+    const avail = availabilities.find(a => {
+      if (a.day_of_week !== dayIndex) return false
+      const startHour = parseInt(a.start_time.split(':')[0])
+      const endHour = parseInt(a.end_time.split(':')[0]) || 24
+      return hour >= startHour && hour < endHour
+    })
+
+    if (currentStatus === null) {
+      // No status -> Create as available (green)
       await fetch(`/api/members/${selectedMember.id}/availabilities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           day_of_week: dayIndex,
           start_time: `${hour.toString().padStart(2, '0')}:00`,
-          end_time: `${((hour + 1) % 24).toString().padStart(2, '0')}:00`
+          end_time: `${((hour + 1) % 24).toString().padStart(2, '0')}:00`,
+          status: 'available'
         })
       })
+    } else if (currentStatus === 'available') {
+      // Available (green) -> Maybe (yellow)
+      await fetch(`/api/availabilities/${avail.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'maybe' })
+      })
+    } else if (currentStatus === 'maybe') {
+      // Maybe (yellow) -> Unavailable (red)
+      await fetch(`/api/availabilities/${avail.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'unavailable' })
+      })
+    } else {
+      // Unavailable (red) -> None (delete)
+      await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
     }
 
     fetchMemberAvailabilities(selectedMember.id)
@@ -264,18 +287,25 @@ function Planning() {
               <p className="text-xs text-lol-dark-500 uppercase mb-3">Legende</p>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-green-500/30 border border-green-500"></div>
+                  <div className="w-4 h-4 rounded bg-green-500/30 border border-green-500 flex items-center justify-center">
+                    <Check className="w-3 h-3 text-green-400" />
+                  </div>
                   <span className="text-sm text-lol-dark-300">Disponible</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-yellow-500/30 border border-yellow-500"></div>
-                  <span className="text-sm text-lol-dark-300">Pas sur (Jaune)</span>
+                  <div className="w-4 h-4 rounded bg-yellow-500/30 border border-yellow-500 flex items-center justify-center">
+                    <Minus className="w-3 h-3 text-yellow-400" />
+                  </div>
+                  <span className="text-sm text-lol-dark-300">Peut-etre</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-red-500/30 border border-red-500"></div>
+                  <div className="w-4 h-4 rounded bg-red-500/30 border border-red-500 flex items-center justify-center">
+                    <X className="w-3 h-3 text-red-400" />
+                  </div>
                   <span className="text-sm text-lol-dark-300">Indisponible</span>
                 </div>
               </div>
+              <p className="text-xs text-lol-dark-500 mt-3">Cliquez pour changer l'etat</p>
             </div>
           </div>
 
@@ -297,19 +327,33 @@ function Planning() {
                   <tr key={day} className="border-b border-lol-dark-700/50">
                     <td className="text-sm text-lol-dark-300 p-3 font-medium">{day}</td>
                     {HOURS.map(hour => {
-                      const isAvailable = selectedMember && isMemberAvailable(selectedMember.id, dayIndex, hour)
+                      const status = selectedMember ? getMemberAvailabilityStatus(selectedMember.id, dayIndex, hour) : null
+                      const getStatusStyles = () => {
+                        switch (status) {
+                          case 'available':
+                            return 'bg-green-500/30 hover:bg-green-500/40 border border-green-500/50'
+                          case 'maybe':
+                            return 'bg-yellow-500/30 hover:bg-yellow-500/40 border border-yellow-500/50'
+                          case 'unavailable':
+                            return 'bg-red-500/30 hover:bg-red-500/40 border border-red-500/50'
+                          default:
+                            return 'hover:bg-lol-dark-700 border border-transparent'
+                        }
+                      }
                       return (
                         <td key={hour} className="p-1">
                           <button
                             onClick={() => toggleAvailability(dayIndex, hour)}
-                            className={`w-full h-8 rounded flex items-center justify-center transition-all ${
-                              isAvailable
-                                ? 'bg-green-500/30 hover:bg-green-500/40'
-                                : 'hover:bg-lol-dark-700'
-                            }`}
+                            className={`w-full h-8 rounded flex items-center justify-center transition-all ${getStatusStyles()}`}
                           >
-                            {isAvailable && (
+                            {status === 'available' && (
                               <Check className="w-4 h-4 text-green-400" />
+                            )}
+                            {status === 'maybe' && (
+                              <Minus className="w-4 h-4 text-yellow-400" />
+                            )}
+                            {status === 'unavailable' && (
+                              <X className="w-4 h-4 text-red-400" />
                             )}
                           </button>
                         </td>
