@@ -369,13 +369,13 @@ function Planning() {
                       const getStatusStyles = () => {
                         switch (status) {
                           case 'available':
-                            return 'bg-green-500/30 hover:bg-green-500/40 border border-green-500/50'
+                            return 'bg-green-500/30 hover:bg-green-500/40 border-2 border-green-500'
                           case 'maybe':
-                            return 'bg-yellow-500/30 hover:bg-yellow-500/40 border border-yellow-500/50'
+                            return 'bg-yellow-500/30 hover:bg-yellow-500/40 border-2 border-yellow-500'
                           case 'unavailable':
-                            return 'bg-red-500/30 hover:bg-red-500/40 border border-red-500/50'
+                            return 'bg-red-500/30 hover:bg-red-500/40 border-2 border-red-500'
                           default:
-                            return 'hover:bg-lol-dark-700 border border-transparent'
+                            return 'bg-lol-dark-700/30 hover:bg-lol-dark-600/50 border border-lol-dark-600'
                         }
                       }
                       return (
