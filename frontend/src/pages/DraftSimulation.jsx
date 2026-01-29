@@ -252,25 +252,32 @@ function DraftSimulation() {
 
             {/* Champions Grid */}
             <div className="grid grid-cols-6 gap-2 max-h-[400px] overflow-y-auto p-2">
-              {filteredChampions.map(champ => (
-                <button
-                  key={champ.id}
-                  onClick={() => selectChampion(champ.id)}
-                  disabled={!selectedSlot}
-                  className={`flex flex-col items-center p-1 rounded-lg transition-all ${
-                    !selectedSlot
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'cursor-pointer hover:bg-lol-dark-700'
-                  }`}
-                >
-                  <img
-                    src={getChampionIcon(champ.id)}
-                    alt={champ.name}
-                    className="w-10 h-10 rounded-full"
-                  />
-                  <span className="text-[10px] text-lol-dark-300 truncate w-full text-center mt-1">{champ.name}</span>
-                </button>
-              ))}
+              {filteredChampions.length === 0 ? (
+                <div className="col-span-6 text-center text-lol-dark-400 py-8">
+                  Chargement des champions...
+                </div>
+              ) : (
+                filteredChampions.map(champ => (
+                  <button
+                    key={champ.id}
+                    onClick={() => selectChampion(champ.id)}
+                    disabled={!selectedSlot}
+                    className={`flex flex-col items-center p-2 rounded-lg transition-all ${
+                      !selectedSlot
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'cursor-pointer hover:bg-lol-dark-700'
+                    }`}
+                  >
+                    <img
+                      src={getChampionIcon(champ.id)}
+                      alt={champ.name}
+                      className="w-12 h-12 rounded-full bg-lol-dark-700"
+                      loading="lazy"
+                    />
+                    <span className="text-[10px] text-lol-dark-300 truncate w-full text-center mt-1">{champ.name}</span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
