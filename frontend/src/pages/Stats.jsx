@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { BarChart3, Sword, Zap, Target, Users, Plus, Trash2, X, Trophy, Clock, Calendar } from 'lucide-react'
+import { useTeam } from '../context/TeamContext'
 
 const DDRAGON_VERSION = '15.2.1'
 const getChampionIcon = (championId) =>
   `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${championId}.png`
 
 function Stats() {
+  const { currentTeam, getTeamData, setTeamData } = useTeam()
   const [activeTab, setActiveTab] = useState('stats')
   const [members, setMembers] = useState([])
   const [champions, setChampions] = useState([])
@@ -21,15 +23,20 @@ function Stats() {
   })
 
   useEffect(() => {
-    fetchMembers()
     fetchChampions()
-    const savedGames = localStorage.getItem('gameHistory')
-    if (savedGames) setGames(JSON.parse(savedGames))
   }, [])
+
+  useEffect(() => {
+    if (currentTeam) {
+      fetchMembers()
+      const savedGames = getTeamData('gameHistory', [])
+      setGames(savedGames)
+    }
+  }, [currentTeam])
 
   const fetchMembers = async () => {
     try {
-      const res = await fetch('/api/members')
+      const res = await fetch(`/api/members?team_id=${currentTeam.id}`)
       const data = await res.json()
       setMembers(data)
       setNewGame(prev => ({
@@ -66,7 +73,7 @@ function Stats() {
 
   const saveGames = (newGames) => {
     setGames(newGames)
-    localStorage.setItem('gameHistory', JSON.stringify(newGames))
+    setTeamData('gameHistory', newGames)
   }
 
   const handleAddGame = () => {

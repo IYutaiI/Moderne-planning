@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Layers, Plus, Edit2, Trash2, X, Search } from 'lucide-react'
+import { useTeam } from '../context/TeamContext'
 
 const ROLES = [
   { key: 'top', label: 'Toplane' },
@@ -15,6 +16,7 @@ const getChampionIcon = (championId) =>
   `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${championId}.png`
 
 function Compositions() {
+  const { currentTeam, getTeamData, setTeamData } = useTeam()
   const [strategies, setStrategies] = useState([])
   const [champions, setChampions] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -31,9 +33,14 @@ function Compositions() {
 
   useEffect(() => {
     fetchChampions()
-    const saved = localStorage.getItem('compositions')
-    if (saved) setStrategies(JSON.parse(saved))
   }, [])
+
+  useEffect(() => {
+    if (currentTeam) {
+      const saved = getTeamData('compositions', [])
+      setStrategies(saved)
+    }
+  }, [currentTeam])
 
   const fetchChampions = async () => {
     try {
@@ -52,7 +59,7 @@ function Compositions() {
 
   const saveStrategies = (newStrategies) => {
     setStrategies(newStrategies)
-    localStorage.setItem('compositions', JSON.stringify(newStrategies))
+    setTeamData('compositions', newStrategies)
   }
 
   const handleSubmit = () => {

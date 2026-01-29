@@ -37,15 +37,24 @@ const db = new Database(dbPath);
 
 // Initialiser les tables
 db.exec(`
+  CREATE TABLE IF NOT EXISTS teams (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id TEXT,
     pseudo TEXT NOT NULL,
     riot_id TEXT,
     discord TEXT,
     role TEXT NOT NULL,
     rank TEXT,
     main_champions TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS availabilities (
@@ -60,13 +69,15 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id TEXT,
     title TEXT NOT NULL,
     description TEXT,
     event_type TEXT NOT NULL,
     event_date TEXT NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS event_participants (
@@ -100,11 +111,69 @@ try {
   // La colonne existe deja
 }
 
+// Migration: ajouter team_id aux tables existantes
+try {
+  db.exec('ALTER TABLE members ADD COLUMN team_id TEXT');
+} catch (e) {
+  // La colonne existe deja
+}
+
+try {
+  db.exec('ALTER TABLE events ADD COLUMN team_id TEXT');
+} catch (e) {
+  // La colonne existe deja
+}
+
 // ============ ROUTES API ============
+
+// --- Teams ---
+app.get('/api/teams', (req, res) => {
+  const teams = db.prepare('SELECT * FROM teams ORDER BY created_at DESC').all();
+  res.json(teams);
+});
+
+app.get('/api/teams/:id', (req, res) => {
+  const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(req.params.id);
+  if (!team) return res.status(404).json({ error: 'Equipe non trouvee' });
+  res.json(team);
+});
+
+app.post('/api/teams', (req, res) => {
+  const { id, name, tag } = req.body;
+  if (!id || !name || !tag) {
+    return res.status(400).json({ error: 'ID, nom et tag requis' });
+  }
+  try {
+    db.prepare('INSERT INTO teams (id, name, tag) VALUES (?, ?, ?)').run(id, name, tag);
+    res.json({ id, name, tag });
+  } catch (e) {
+    res.status(400).json({ error: 'Equipe deja existante' });
+  }
+});
+
+app.put('/api/teams/:id', (req, res) => {
+  const { name, tag } = req.body;
+  db.prepare('UPDATE teams SET name = ?, tag = ? WHERE id = ?').run(name, tag, req.params.id);
+  res.json({ id: req.params.id, name, tag });
+});
+
+app.delete('/api/teams/:id', (req, res) => {
+  // Delete all related data first
+  db.prepare('DELETE FROM members WHERE team_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM events WHERE team_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM teams WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
 
 // --- Members ---
 app.get('/api/members', (req, res) => {
-  const members = db.prepare('SELECT * FROM members ORDER BY role, pseudo').all();
+  const { team_id } = req.query;
+  let members;
+  if (team_id) {
+    members = db.prepare('SELECT * FROM members WHERE team_id = ? ORDER BY role, pseudo').all(team_id);
+  } else {
+    members = db.prepare('SELECT * FROM members ORDER BY role, pseudo').all();
+  }
   res.json(members);
 });
 
@@ -115,13 +184,13 @@ app.get('/api/members/:id', (req, res) => {
 });
 
 app.post('/api/members', (req, res) => {
-  const { pseudo, riot_id, discord, role, rank, main_champions } = req.body;
+  const { pseudo, riot_id, discord, role, rank, main_champions, team_id } = req.body;
   if (!pseudo || !role) {
     return res.status(400).json({ error: 'Pseudo et rôle requis' });
   }
   const result = db.prepare(
-    'INSERT INTO members (pseudo, riot_id, discord, role, rank, main_champions) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(pseudo, riot_id, discord, role, rank, main_champions);
+    'INSERT INTO members (pseudo, riot_id, discord, role, rank, main_champions, team_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(pseudo, riot_id, discord, role, rank, main_champions, team_id);
   res.json({ id: result.lastInsertRowid, ...req.body });
 });
 
@@ -185,9 +254,17 @@ app.delete('/api/members/:id/availabilities', (req, res) => {
 });
 
 app.get('/api/availabilities/team', (req, res) => {
-  const { week_start } = req.query;
+  const { week_start, team_id } = req.query;
   let availabilities;
-  if (week_start) {
+  if (week_start && team_id) {
+    availabilities = db.prepare(`
+      SELECT a.*, m.pseudo, m.role
+      FROM availabilities a
+      JOIN members m ON a.member_id = m.id
+      WHERE a.week_start = ? AND m.team_id = ?
+      ORDER BY a.day_of_week, a.start_time
+    `).all(week_start, team_id);
+  } else if (week_start) {
     availabilities = db.prepare(`
       SELECT a.*, m.pseudo, m.role
       FROM availabilities a
@@ -237,7 +314,13 @@ app.post('/api/members/:id/availabilities/copy-week', (req, res) => {
 
 // --- Events ---
 app.get('/api/events', (req, res) => {
-  const events = db.prepare('SELECT * FROM events ORDER BY event_date, start_time').all();
+  const { team_id } = req.query;
+  let events;
+  if (team_id) {
+    events = db.prepare('SELECT * FROM events WHERE team_id = ? ORDER BY event_date, start_time').all(team_id);
+  } else {
+    events = db.prepare('SELECT * FROM events ORDER BY event_date, start_time').all();
+  }
   res.json(events);
 });
 
@@ -256,11 +339,11 @@ app.get('/api/events/:id', (req, res) => {
 });
 
 app.post('/api/events', (req, res) => {
-  const { title, description, event_type, event_date, start_time, end_time, participant_ids } = req.body;
+  const { title, description, event_type, event_date, start_time, end_time, participant_ids, team_id } = req.body;
 
   const result = db.prepare(
-    'INSERT INTO events (title, description, event_type, event_date, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(title, description, event_type, event_date, start_time, end_time);
+    'INSERT INTO events (title, description, event_type, event_date, start_time, end_time, team_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(title, description, event_type, event_date, start_time, end_time, team_id);
 
   const eventId = result.lastInsertRowid;
 
@@ -306,13 +389,26 @@ app.put('/api/event-participants/:id', (req, res) => {
 
 // --- Dashboard Stats ---
 app.get('/api/stats', (req, res) => {
-  const memberCount = db.prepare('SELECT COUNT(*) as count FROM members').get();
-  const upcomingEvents = db.prepare(
-    "SELECT COUNT(*) as count FROM events WHERE event_date >= date('now')"
-  ).get();
-  const nextEvent = db.prepare(
-    "SELECT * FROM events WHERE event_date >= date('now') ORDER BY event_date, start_time LIMIT 1"
-  ).get();
+  const { team_id } = req.query;
+  let memberCount, upcomingEvents, nextEvent;
+
+  if (team_id) {
+    memberCount = db.prepare('SELECT COUNT(*) as count FROM members WHERE team_id = ?').get(team_id);
+    upcomingEvents = db.prepare(
+      "SELECT COUNT(*) as count FROM events WHERE team_id = ? AND event_date >= date('now')"
+    ).get(team_id);
+    nextEvent = db.prepare(
+      "SELECT * FROM events WHERE team_id = ? AND event_date >= date('now') ORDER BY event_date, start_time LIMIT 1"
+    ).get(team_id);
+  } else {
+    memberCount = db.prepare('SELECT COUNT(*) as count FROM members').get();
+    upcomingEvents = db.prepare(
+      "SELECT COUNT(*) as count FROM events WHERE event_date >= date('now')"
+    ).get();
+    nextEvent = db.prepare(
+      "SELECT * FROM events WHERE event_date >= date('now') ORDER BY event_date, start_time LIMIT 1"
+    ).get();
+  }
 
   res.json({
     memberCount: memberCount.count,

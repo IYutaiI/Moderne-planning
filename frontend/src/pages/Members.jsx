@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Users, Plus, Edit2, Trash2, X, Save, ExternalLink } from 'lucide-react'
+import { useTeam } from '../context/TeamContext'
 
 const ROLES = [
   { value: 'TOP', label: 'TOP', color: 'text-red-400' },
@@ -16,6 +17,7 @@ const RANKS = [
 ]
 
 function Members() {
+  const { currentTeam } = useTeam()
   const [members, setMembers] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
@@ -28,12 +30,14 @@ function Members() {
   })
 
   useEffect(() => {
-    fetchMembers()
-  }, [])
+    if (currentTeam) {
+      fetchMembers()
+    }
+  }, [currentTeam])
 
   const fetchMembers = async () => {
     try {
-      const res = await fetch('/api/members')
+      const res = await fetch(`/api/members?team_id=${currentTeam.id}`)
       setMembers(await res.json())
     } catch (error) {
       console.error('Erreur:', error)
@@ -46,10 +50,14 @@ function Members() {
       const url = editingMember ? `/api/members/${editingMember.id}` : '/api/members'
       const method = editingMember ? 'PUT' : 'POST'
 
+      const body = editingMember
+        ? formData
+        : { ...formData, team_id: currentTeam.id }
+
       await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(body)
       })
 
       fetchMembers()
@@ -130,7 +138,10 @@ function Members() {
     <div className="space-y-8 animate-fadeIn">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Effectif</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Effectif</h1>
+          <p className="text-lol-dark-400">{currentTeam?.name}</p>
+        </div>
         <div className="flex items-center gap-3">
           {members.length > 0 && (
             <button
