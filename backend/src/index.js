@@ -54,6 +54,7 @@ db.exec(`
     day_of_week INTEGER NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
+    status TEXT DEFAULT 'available',
     FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
   );
 
@@ -81,6 +82,13 @@ db.exec(`
 // Migration: ajouter riot_id si la colonne n'existe pas
 try {
   db.exec('ALTER TABLE members ADD COLUMN riot_id TEXT');
+} catch (e) {
+  // La colonne existe deja
+}
+
+// Migration: ajouter status aux availabilities
+try {
+  db.exec("ALTER TABLE availabilities ADD COLUMN status TEXT DEFAULT 'available'");
 } catch (e) {
   // La colonne existe deja
 }
@@ -132,11 +140,17 @@ app.get('/api/members/:id/availabilities', (req, res) => {
 });
 
 app.post('/api/members/:id/availabilities', (req, res) => {
-  const { day_of_week, start_time, end_time } = req.body;
+  const { day_of_week, start_time, end_time, status } = req.body;
   const result = db.prepare(
-    'INSERT INTO availabilities (member_id, day_of_week, start_time, end_time) VALUES (?, ?, ?, ?)'
-  ).run(req.params.id, day_of_week, start_time, end_time);
+    'INSERT INTO availabilities (member_id, day_of_week, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)'
+  ).run(req.params.id, day_of_week, start_time, end_time, status || 'available');
   res.json({ id: result.lastInsertRowid, member_id: parseInt(req.params.id), ...req.body });
+});
+
+app.put('/api/availabilities/:id', (req, res) => {
+  const { status } = req.body;
+  db.prepare('UPDATE availabilities SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ success: true });
 });
 
 app.delete('/api/availabilities/:id', (req, res) => {

@@ -1,19 +1,19 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard,
   Users,
   Calendar,
-  CalendarDays,
-  Clock,
+  Layers,
+  Wand2,
+  BarChart3,
   Gamepad2
 } from 'lucide-react'
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/members', icon: Users, label: 'Membres' },
+  { path: '/members', icon: Users, label: 'Roster' },
   { path: '/planning', icon: Calendar, label: 'Planning' },
-  { path: '/events', icon: CalendarDays, label: 'Événements' },
-  { path: '/availabilities', icon: Clock, label: 'Disponibilités' },
+  { path: '/compositions', icon: Layers, label: 'Compositions' },
+  { path: '/draft', icon: Wand2, label: 'Draft Simulation' },
+  { path: '/stats', icon: BarChart3, label: 'Statistiques' },
 ]
 
 function Sidebar() {
@@ -22,27 +22,26 @@ function Sidebar() {
       {/* Logo */}
       <div className="p-6 border-b border-lol-dark-700">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-lol-blue-500 to-lol-blue-700 flex items-center justify-center animate-glow">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center">
             <Gamepad2 className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">LoL Scheduler</h1>
-            <p className="text-xs text-lol-dark-400">Team Planning</p>
+            <h1 className="text-lg font-bold text-purple-400">NexusManager</h1>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="p-4 space-y-2">
+      <nav className="p-4 space-y-1">
         {navItems.map(({ path, icon: Icon, label }) => (
           <NavLink
             key={path}
             to={path}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group ${
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                 isActive
-                  ? 'bg-lol-blue-500/20 text-lol-blue-400 border border-lol-blue-500/30'
-                  : 'text-lol-dark-300 hover:bg-lol-dark-800 hover:text-white'
+                  ? 'bg-purple-600/20 text-purple-400'
+                  : 'text-lol-dark-400 hover:bg-lol-dark-800 hover:text-white'
               }`
             }
           >
@@ -51,19 +50,6 @@ function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-lol-dark-700">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-lol-dark-800/50">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-lol-gold-500 to-lol-gold-700 flex items-center justify-center">
-            <span className="text-sm font-bold text-lol-dark-900">T</span>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-white">Team</p>
-            <p className="text-xs text-lol-dark-400">Saison 2024</p>
-          </div>
-        </div>
-      </div>
     </aside>
   )
 }
