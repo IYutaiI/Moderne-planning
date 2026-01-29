@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Users, Plus, Edit2, Trash2, X, Save, ExternalLink } from 'lucide-react'
 
 const ROLES = [
@@ -221,7 +222,7 @@ function Members() {
       )}
 
       {/* Modal */}
-      {isModalOpen && (
+      {isModalOpen && createPortal(
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-lol-dark-800 rounded-2xl border border-lol-dark-600 w-full max-w-md mx-4 animate-fadeIn">
             <div className="flex items-center justify-between p-6 border-b border-lol-dark-700">
@@ -334,7 +335,8 @@ function Members() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
