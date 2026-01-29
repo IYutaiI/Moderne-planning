@@ -24,11 +24,11 @@ function Compositions() {
     champions: { top: [], jungle: [], mid: [], adc: [], support: [] },
     bans: []
   })
-  const [activeTab, setActiveTab] = useState('picks') // 'picks' or 'bans'
-  const [selectedRole, setSelectedRole] = useState('all')
+  const [activeTab, setActiveTab] = useState('picks')
+  const [filterRole, setFilterRole] = useState('all')
+  const [targetRole, setTargetRole] = useState('top')
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Fetch champions from Data Dragon
   useEffect(() => {
     fetchChampions()
     const saved = localStorage.getItem('compositions')
@@ -88,7 +88,8 @@ function Compositions() {
       })
     }
     setActiveTab('picks')
-    setSelectedRole('all')
+    setFilterRole('all')
+    setTargetRole('top')
     setSearchQuery('')
     setIsModalOpen(true)
   }
@@ -119,6 +120,12 @@ function Compositions() {
 
   const isChampionSelected = (championId) => {
     return Object.values(formData.champions).some(arr => arr.includes(championId))
+  }
+
+  const getChampionRoles = (championId) => {
+    return Object.entries(formData.champions)
+      .filter(([_, arr]) => arr.includes(championId))
+      .map(([role]) => role)
   }
 
   const getTotalChampions = (strategy) => {
@@ -195,42 +202,45 @@ function Compositions() {
                 </div>
               </div>
 
-              {/* Champions by Role */}
-              <div className="grid grid-cols-5 gap-6 mb-6">
+              {/* Champions by Role - Vertical Layout */}
+              <div className="flex justify-center gap-8 mb-6">
                 {ROLES.map(role => {
                   const champs = strategy.champions[role.key] || []
-                  const mainChamp = champs[0]
-                  const secondaryChamps = champs.slice(1)
 
                   return (
                     <div key={role.key} className="text-center">
-                      <p className="text-xs text-lol-dark-400 mb-3 uppercase">{role.label}</p>
-                      <div className="relative inline-block">
-                        {mainChamp ? (
-                          <>
-                            <img
-                              src={getChampionIcon(mainChamp)}
-                              alt={getChampionName(mainChamp)}
-                              className="w-20 h-20 rounded-full border-3 border-lol-dark-600 mx-auto"
-                              title={getChampionName(mainChamp)}
-                            />
-                            {secondaryChamps.length > 0 && (
-                              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                                {secondaryChamps.map(champ => (
-                                  <img
-                                    key={champ}
-                                    src={getChampionIcon(champ)}
-                                    alt={getChampionName(champ)}
-                                    className="w-8 h-8 rounded-full border-2 border-lol-dark-700"
-                                    title={getChampionName(champ)}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </>
+                      <p className="text-xs text-lol-dark-400 mb-3 uppercase font-medium">{role.label}</p>
+                      <div className="flex flex-col items-center gap-2">
+                        {/* Main champion - larger */}
+                        {champs[0] ? (
+                          <img
+                            src={getChampionIcon(champs[0])}
+                            alt={getChampionName(champs[0])}
+                            className="w-16 h-16 rounded-full border-2 border-purple-500"
+                            title={getChampionName(champs[0])}
+                          />
                         ) : (
-                          <div className="w-20 h-20 rounded-full bg-lol-dark-700/50 border-2 border-dashed border-lol-dark-600 mx-auto"></div>
+                          <div className="w-16 h-16 rounded-full bg-lol-dark-700/50 border-2 border-dashed border-lol-dark-600"></div>
                         )}
+                        {/* Secondary champions - smaller, stacked */}
+                        <div className="flex flex-col gap-1">
+                          {[1, 2, 3].map(index => (
+                            champs[index] ? (
+                              <img
+                                key={index}
+                                src={getChampionIcon(champs[index])}
+                                alt={getChampionName(champs[index])}
+                                className="w-10 h-10 rounded-full border border-lol-dark-600"
+                                title={getChampionName(champs[index])}
+                              />
+                            ) : (
+                              <div
+                                key={index}
+                                className="w-10 h-10 rounded-full bg-lol-dark-700/30 border border-dashed border-lol-dark-600/50"
+                              ></div>
+                            )
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )
@@ -239,8 +249,8 @@ function Compositions() {
 
               {/* Bans */}
               {strategy.bans && strategy.bans.length > 0 && (
-                <div className="pt-4 border-t border-lol-dark-700/50 flex items-center gap-4">
-                  <p className="text-xs text-lol-dark-500 uppercase">Bans Prioritaires</p>
+                <div className="pt-4 border-t border-lol-dark-700/50 flex items-center justify-center gap-4">
+                  <p className="text-xs text-lol-dark-500 uppercase">Bans</p>
                   <div className="flex gap-2 flex-wrap">
                     {strategy.bans.map(champ => (
                       <div key={champ} className="relative">
@@ -265,7 +275,7 @@ function Compositions() {
 
       {/* Modal */}
       {isModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-lol-dark-900 rounded-2xl border border-lol-dark-700 w-full max-w-6xl max-h-[90vh] flex flex-col animate-fadeIn">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-lol-dark-700">
@@ -295,45 +305,75 @@ function Compositions() {
               </div>
             </div>
 
-            {/* Selected Champions Display */}
-            <div className="p-6 border-b border-lol-dark-700 bg-lol-dark-800/50">
-              <div className="grid grid-cols-5 gap-8">
+            {/* Selected Champions Display - 4 vertical picks per role */}
+            <div className="p-6 border-b border-lol-dark-700 bg-lol-dark-800/30">
+              <div className="flex justify-center gap-12">
                 {ROLES.map(role => {
                   const champs = formData.champions[role.key] || []
-                  const mainChamp = champs[0]
-                  const secondaryChamps = champs.slice(1)
+                  const isTargetRole = targetRole === role.key && activeTab === 'picks'
 
                   return (
-                    <div key={role.key} className="text-center">
-                      <p className="text-xs text-lol-dark-400 mb-3 uppercase">{role.label}</p>
-                      <div className="relative inline-block">
-                        {mainChamp ? (
-                          <>
+                    <div
+                      key={role.key}
+                      className={`text-center cursor-pointer transition-all ${
+                        isTargetRole ? 'transform scale-105' : ''
+                      }`}
+                      onClick={() => {
+                        if (activeTab === 'picks') {
+                          setTargetRole(role.key)
+                        }
+                      }}
+                    >
+                      <p className={`text-xs mb-3 uppercase font-medium tracking-wider ${
+                        isTargetRole ? 'text-purple-400' : 'text-lol-dark-400'
+                      }`}>
+                        {role.label}
+                      </p>
+                      <div className="flex flex-col items-center gap-2">
+                        {/* Main champion - larger */}
+                        <div className={`relative ${isTargetRole ? 'ring-2 ring-purple-500 ring-offset-2 ring-offset-lol-dark-900 rounded-full' : ''}`}>
+                          {champs[0] ? (
                             <img
-                              src={getChampionIcon(mainChamp)}
-                              alt={getChampionName(mainChamp)}
-                              className="w-16 h-16 rounded-full border-2 border-purple-500 mx-auto cursor-pointer hover:opacity-80"
-                              title={`${getChampionName(mainChamp)} - Cliquez pour retirer`}
-                              onClick={() => toggleChampion(role.key, mainChamp)}
+                              src={getChampionIcon(champs[0])}
+                              alt={getChampionName(champs[0])}
+                              className="w-16 h-16 rounded-full border-2 border-purple-500 cursor-pointer hover:opacity-80"
+                              title={`${getChampionName(champs[0])} - Cliquez pour retirer`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleChampion(role.key, champs[0])
+                              }}
                             />
-                            {secondaryChamps.length > 0 && (
-                              <div className="flex justify-center gap-1 mt-2">
-                                {secondaryChamps.map(champ => (
-                                  <img
-                                    key={champ}
-                                    src={getChampionIcon(champ)}
-                                    alt={getChampionName(champ)}
-                                    className="w-8 h-8 rounded-full border border-lol-dark-600 cursor-pointer hover:opacity-80"
-                                    title={`${getChampionName(champ)} - Cliquez pour retirer`}
-                                    onClick={() => toggleChampion(role.key, champ)}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div className="w-16 h-16 rounded-full bg-lol-dark-700/50 border-2 border-dashed border-lol-dark-600 mx-auto"></div>
-                        )}
+                          ) : (
+                            <div className={`w-16 h-16 rounded-full bg-lol-dark-700/50 border-2 border-dashed ${
+                              isTargetRole ? 'border-purple-500' : 'border-lol-dark-600'
+                            }`}></div>
+                          )}
+                        </div>
+                        {/* Secondary champions - smaller, stacked vertically */}
+                        <div className="flex flex-col gap-1">
+                          {[1, 2, 3].map(index => (
+                            champs[index] ? (
+                              <img
+                                key={index}
+                                src={getChampionIcon(champs[index])}
+                                alt={getChampionName(champs[index])}
+                                className="w-10 h-10 rounded-full border border-lol-dark-600 cursor-pointer hover:opacity-80"
+                                title={`${getChampionName(champs[index])} - Cliquez pour retirer`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleChampion(role.key, champs[index])
+                                }}
+                              />
+                            ) : (
+                              <div
+                                key={index}
+                                className={`w-10 h-10 rounded-full bg-lol-dark-700/30 border border-dashed ${
+                                  isTargetRole ? 'border-purple-500/50' : 'border-lol-dark-600/50'
+                                }`}
+                              ></div>
+                            )
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )
@@ -341,11 +381,11 @@ function Compositions() {
               </div>
 
               {/* Bans Display */}
-              {formData.bans && formData.bans.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-lol-dark-700/50 flex items-center gap-4">
-                  <p className="text-xs text-lol-dark-500 uppercase">Bans</p>
-                  <div className="flex gap-2">
-                    {formData.bans.map(champ => (
+              <div className="mt-6 pt-4 border-t border-lol-dark-700/50 flex items-center justify-center gap-4">
+                <p className="text-xs text-lol-dark-500 uppercase">Bans</p>
+                <div className="flex gap-2 flex-wrap justify-center">
+                  {formData.bans && formData.bans.length > 0 ? (
+                    formData.bans.map(champ => (
                       <div key={champ} className="relative cursor-pointer" onClick={() => toggleBan(champ)}>
                         <img
                           src={getChampionIcon(champ)}
@@ -357,23 +397,33 @@ function Compositions() {
                           <div className="w-full h-0.5 bg-red-500 rotate-45"></div>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    ))
+                  ) : (
+                    <span className="text-xs text-lol-dark-500">Aucun ban selectionne</span>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Tabs */}
             <div className="flex items-center gap-6 px-6 py-3 border-b border-lol-dark-700">
               <button
                 onClick={() => setActiveTab('picks')}
-                className={`text-sm font-medium ${activeTab === 'picks' ? 'text-white' : 'text-lol-dark-400 hover:text-white'}`}
+                className={`text-sm font-medium pb-1 border-b-2 transition-colors ${
+                  activeTab === 'picks'
+                    ? 'text-white border-purple-500'
+                    : 'text-lol-dark-400 border-transparent hover:text-white'
+                }`}
               >
                 Picks
               </button>
               <button
                 onClick={() => setActiveTab('bans')}
-                className={`text-sm font-medium ${activeTab === 'bans' ? 'text-white' : 'text-lol-dark-400 hover:text-white'}`}
+                className={`text-sm font-medium pb-1 border-b-2 transition-colors ${
+                  activeTab === 'bans'
+                    ? 'text-white border-red-500'
+                    : 'text-lol-dark-400 border-transparent hover:text-white'
+                }`}
               >
                 Bans
               </button>
@@ -382,16 +432,24 @@ function Compositions() {
             {/* Filters */}
             <div className="flex items-center gap-4 px-6 py-3 border-b border-lol-dark-700">
               {activeTab === 'picks' && (
-                <select
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
-                  className="bg-lol-dark-800 border border-lol-dark-600 rounded-lg px-3 py-2 text-sm text-white"
-                >
-                  <option value="all">Role: All</option>
-                  {ROLES.map(role => (
-                    <option key={role.key} value={role.key}>{role.label}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-lol-dark-400">Role:</span>
+                  <select
+                    value={filterRole}
+                    onChange={(e) => {
+                      setFilterRole(e.target.value)
+                      if (e.target.value !== 'all') {
+                        setTargetRole(e.target.value)
+                      }
+                    }}
+                    className="bg-lol-dark-800 border border-lol-dark-600 rounded-lg px-3 py-2 text-sm text-white"
+                  >
+                    <option value="all">All</option>
+                    {ROLES.map(role => (
+                      <option key={role.key} value={role.key}>{role.label}</option>
+                    ))}
+                  </select>
+                </div>
               )}
               <div className="relative flex-1 max-w-xs">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-lol-dark-400" />
@@ -403,34 +461,38 @@ function Compositions() {
                   className="w-full bg-lol-dark-800 border border-lol-dark-600 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-lol-dark-400"
                 />
               </div>
+              {activeTab === 'picks' && filterRole === 'all' && (
+                <p className="text-xs text-purple-400">
+                  Cliquez sur un role ci-dessus pour le selectionner ({ROLES.find(r => r.key === targetRole)?.label})
+                </p>
+              )}
             </div>
 
             {/* Champion Grid */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="grid grid-cols-12 gap-2">
                 {filteredChampions.map(champ => {
-                  const isSelected = activeTab === 'picks' ? isChampionSelected(champ.id) : formData.bans?.includes(champ.id)
+                  const isSelectedForPicks = isChampionSelected(champ.id)
                   const isBanned = formData.bans?.includes(champ.id)
+                  const isSelected = activeTab === 'picks' ? isSelectedForPicks : isBanned
+                  const selectedRoles = getChampionRoles(champ.id)
 
                   return (
                     <button
                       key={champ.id}
                       onClick={() => {
                         if (activeTab === 'picks') {
-                          if (selectedRole !== 'all') {
-                            toggleChampion(selectedRole, champ.id)
-                          }
+                          toggleChampion(targetRole, champ.id)
                         } else {
                           toggleBan(champ.id)
                         }
                       }}
-                      disabled={activeTab === 'picks' && selectedRole === 'all'}
                       className={`flex flex-col items-center p-2 rounded-lg transition-all ${
                         isSelected
                           ? activeTab === 'bans'
                             ? 'bg-red-500/20 ring-2 ring-red-500'
                             : 'bg-purple-500/20 ring-2 ring-purple-500'
-                          : 'hover:bg-lol-dark-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                          : 'hover:bg-lol-dark-700'
                       }`}
                     >
                       <div className="relative">
@@ -442,6 +504,11 @@ function Compositions() {
                         {isBanned && activeTab === 'picks' && (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-full h-0.5 bg-red-500 rotate-45"></div>
+                          </div>
+                        )}
+                        {activeTab === 'picks' && selectedRoles.length > 0 && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
+                            <span className="text-[10px] text-white font-bold">{selectedRoles.length}</span>
                           </div>
                         )}
                       </div>
