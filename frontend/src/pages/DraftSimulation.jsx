@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { RotateCcw, Swords, Search } from 'lucide-react'
 
-const DDRAGON_VERSION = '14.24.1'
+const DDRAGON_VERSION = '15.2.1'
 const getChampionIcon = (championId) =>
   `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${championId}.png`
 
