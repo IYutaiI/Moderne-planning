@@ -222,8 +222,8 @@ function Members() {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-lol-dark-800 rounded-2xl border border-lol-dark-600 w-full max-w-md animate-fadeIn">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-lol-dark-800 rounded-2xl border border-lol-dark-600 w-full max-w-md mx-4 animate-fadeIn">
             <div className="flex items-center justify-between p-6 border-b border-lol-dark-700">
               <h2 className="text-xl font-bold text-white">
                 {editingMember ? 'Modifier le membre' : 'Nouveau membre'}
