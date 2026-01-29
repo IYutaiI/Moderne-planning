@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Users, ChevronLeft, ChevronRight, Plus, Check, X, Minus } from 'lucide-react'
+import { Calendar, Users, ChevronLeft, ChevronRight, Plus, Check, X, Minus, Copy, Trash2, RotateCcw } from 'lucide-react'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 const DAYS_SHORT = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM']
@@ -164,6 +164,55 @@ function Planning() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: selectedTool })
+      })
+    }
+
+    fetchMemberAvailabilities(selectedMember.id)
+    fetchData()
+  }
+
+  // Clear all availabilities for current member
+  const clearAllAvailabilities = async () => {
+    if (!selectedMember) return
+    if (!confirm('Voulez-vous vraiment effacer toutes les disponibilites ?')) return
+
+    // Delete all availabilities for this member
+    for (const avail of availabilities) {
+      await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+    }
+
+    fetchMemberAvailabilities(selectedMember.id)
+    fetchData()
+  }
+
+  // Copy availabilities from another member
+  const copyFromMember = async (sourceMemberId) => {
+    if (!selectedMember || sourceMemberId === selectedMember.id) return
+
+    // Get source member availabilities
+    const sourceAvails = teamAvailabilities.filter(a => a.member_id === sourceMemberId)
+
+    if (sourceAvails.length === 0) {
+      alert('Ce membre n\'a pas de disponibilites definies')
+      return
+    }
+
+    // Clear current member availabilities first
+    for (const avail of availabilities) {
+      await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+    }
+
+    // Copy source availabilities to current member
+    for (const avail of sourceAvails) {
+      await fetch(`/api/members/${selectedMember.id}/availabilities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day_of_week: avail.day_of_week,
+          start_time: avail.start_time,
+          end_time: avail.end_time,
+          status: avail.status || 'available'
+        })
       })
     }
 
@@ -359,11 +408,41 @@ function Planning() {
 
           {/* Availability Grid */}
           <div className="flex-1">
-            {/* Selected Member Indicator */}
+            {/* Selected Member Indicator & Actions */}
             {selectedMember ? (
-              <div className="mb-4 p-3 bg-purple-600/20 border border-purple-500/50 rounded-xl flex items-center gap-3">
-                <Users className="w-5 h-5 text-purple-400" />
-                <span className="text-white font-medium">Disponibilites de: <span className="text-purple-400">{selectedMember.pseudo}</span></span>
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div className="p-3 bg-purple-600/20 border border-purple-500/50 rounded-xl flex items-center gap-3 flex-1">
+                  <Users className="w-5 h-5 text-purple-400" />
+                  <span className="text-white font-medium">Disponibilites de: <span className="text-purple-400">{selectedMember.pseudo}</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Copy from another member */}
+                  <div className="relative group">
+                    <button className="p-3 bg-blue-600/20 border border-blue-500/50 rounded-xl hover:bg-blue-600/30 transition-colors">
+                      <Copy className="w-5 h-5 text-blue-400" />
+                    </button>
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-lol-dark-800 border border-lol-dark-600 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                      <p className="text-xs text-lol-dark-400 p-3 border-b border-lol-dark-700">Copier depuis:</p>
+                      {members.filter(m => m.id !== selectedMember.id).map(member => (
+                        <button
+                          key={member.id}
+                          onClick={() => copyFromMember(member.id)}
+                          className="w-full text-left px-3 py-2 text-sm text-white hover:bg-lol-dark-700 transition-colors"
+                        >
+                          {member.pseudo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Clear all */}
+                  <button
+                    onClick={clearAllAvailabilities}
+                    className="p-3 bg-red-600/20 border border-red-500/50 rounded-xl hover:bg-red-600/30 transition-colors"
+                    title="Tout effacer"
+                  >
+                    <Trash2 className="w-5 h-5 text-red-400" />
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-xl flex items-center gap-3">
