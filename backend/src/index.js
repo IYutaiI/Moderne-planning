@@ -93,6 +93,13 @@ try {
   // La colonne existe deja
 }
 
+// Migration: ajouter week_start aux availabilities pour tracker la semaine
+try {
+  db.exec("ALTER TABLE availabilities ADD COLUMN week_start TEXT");
+} catch (e) {
+  // La colonne existe deja
+}
+
 // ============ ROUTES API ============
 
 // --- Members ---
@@ -133,17 +140,25 @@ app.delete('/api/members/:id', (req, res) => {
 
 // --- Availabilities ---
 app.get('/api/members/:id/availabilities', (req, res) => {
-  const availabilities = db.prepare(
-    'SELECT * FROM availabilities WHERE member_id = ? ORDER BY day_of_week, start_time'
-  ).all(req.params.id);
+  const { week_start } = req.query;
+  let availabilities;
+  if (week_start) {
+    availabilities = db.prepare(
+      'SELECT * FROM availabilities WHERE member_id = ? AND week_start = ? ORDER BY day_of_week, start_time'
+    ).all(req.params.id, week_start);
+  } else {
+    availabilities = db.prepare(
+      'SELECT * FROM availabilities WHERE member_id = ? ORDER BY day_of_week, start_time'
+    ).all(req.params.id);
+  }
   res.json(availabilities);
 });
 
 app.post('/api/members/:id/availabilities', (req, res) => {
-  const { day_of_week, start_time, end_time, status } = req.body;
+  const { day_of_week, start_time, end_time, status, week_start } = req.body;
   const result = db.prepare(
-    'INSERT INTO availabilities (member_id, day_of_week, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)'
-  ).run(req.params.id, day_of_week, start_time, end_time, status || 'available');
+    'INSERT INTO availabilities (member_id, day_of_week, start_time, end_time, status, week_start) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(req.params.id, day_of_week, start_time, end_time, status || 'available', week_start || null);
   res.json({ id: result.lastInsertRowid, member_id: parseInt(req.params.id), ...req.body });
 });
 
@@ -158,14 +173,66 @@ app.delete('/api/availabilities/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// Delete all availabilities for a member for a specific week
+app.delete('/api/members/:id/availabilities', (req, res) => {
+  const { week_start } = req.query;
+  if (week_start) {
+    db.prepare('DELETE FROM availabilities WHERE member_id = ? AND week_start = ?').run(req.params.id, week_start);
+  } else {
+    db.prepare('DELETE FROM availabilities WHERE member_id = ?').run(req.params.id);
+  }
+  res.json({ success: true });
+});
+
 app.get('/api/availabilities/team', (req, res) => {
-  const availabilities = db.prepare(`
-    SELECT a.*, m.pseudo, m.role
-    FROM availabilities a
-    JOIN members m ON a.member_id = m.id
-    ORDER BY a.day_of_week, a.start_time
-  `).all();
+  const { week_start } = req.query;
+  let availabilities;
+  if (week_start) {
+    availabilities = db.prepare(`
+      SELECT a.*, m.pseudo, m.role
+      FROM availabilities a
+      JOIN members m ON a.member_id = m.id
+      WHERE a.week_start = ?
+      ORDER BY a.day_of_week, a.start_time
+    `).all(week_start);
+  } else {
+    availabilities = db.prepare(`
+      SELECT a.*, m.pseudo, m.role
+      FROM availabilities a
+      JOIN members m ON a.member_id = m.id
+      ORDER BY a.day_of_week, a.start_time
+    `).all();
+  }
   res.json(availabilities);
+});
+
+// Copy availabilities from previous week
+app.post('/api/members/:id/availabilities/copy-week', (req, res) => {
+  const { from_week, to_week } = req.body;
+  const memberId = req.params.id;
+
+  // Get previous week availabilities
+  const prevAvails = db.prepare(
+    'SELECT * FROM availabilities WHERE member_id = ? AND week_start = ?'
+  ).all(memberId, from_week);
+
+  if (prevAvails.length === 0) {
+    return res.status(404).json({ error: 'Aucune disponibilite trouvee pour la semaine precedente' });
+  }
+
+  // Delete current week availabilities first
+  db.prepare('DELETE FROM availabilities WHERE member_id = ? AND week_start = ?').run(memberId, to_week);
+
+  // Copy to new week
+  const insert = db.prepare(
+    'INSERT INTO availabilities (member_id, day_of_week, start_time, end_time, status, week_start) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+
+  for (const avail of prevAvails) {
+    insert.run(memberId, avail.day_of_week, avail.start_time, avail.end_time, avail.status, to_week);
+  }
+
+  res.json({ success: true, copied: prevAvails.length });
 });
 
 // --- Events ---

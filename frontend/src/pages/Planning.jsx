@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Users, ChevronLeft, ChevronRight, Plus, Check, X, Minus } from 'lucide-react'
+import { Calendar, Users, ChevronLeft, ChevronRight, Plus, Check, X, Minus, Copy, Trash2, RotateCcw } from 'lucide-react'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 const DAYS_SHORT = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM']
@@ -25,8 +25,8 @@ function Planning() {
   }, [])
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    fetchData(getWeekStartString())
+  }, [currentDate])
 
   useEffect(() => {
     if (members.length > 0 && !selectedMember) {
@@ -36,15 +36,16 @@ function Planning() {
 
   useEffect(() => {
     if (selectedMember) {
-      fetchMemberAvailabilities(selectedMember.id)
+      fetchMemberAvailabilities(selectedMember.id, getWeekStartString())
     }
-  }, [selectedMember])
+  }, [selectedMember, currentDate])
 
-  const fetchData = async () => {
+  const fetchData = async (weekStart = null) => {
+    const week = weekStart || getWeekStartString()
     try {
       const [membersRes, teamAvailRes, eventsRes] = await Promise.all([
         fetch('/api/members'),
-        fetch('/api/availabilities/team'),
+        fetch(`/api/availabilities/team?week_start=${week}`),
         fetch('/api/events')
       ])
       setMembers(await membersRes.json())
@@ -55,9 +56,10 @@ function Planning() {
     }
   }
 
-  const fetchMemberAvailabilities = async (memberId) => {
+  const fetchMemberAvailabilities = async (memberId, weekStart = null) => {
+    const week = weekStart || getWeekStartString()
     try {
-      const res = await fetch(`/api/members/${memberId}/availabilities`)
+      const res = await fetch(`/api/members/${memberId}/availabilities?week_start=${week}`)
       setAvailabilities(await res.json())
     } catch (error) {
       console.error('Erreur:', error)
@@ -80,6 +82,24 @@ function Planning() {
   }
 
   const weekDates = getWeekDates()
+
+  // Get week start string (YYYY-MM-DD format for Monday)
+  const getWeekStartString = (date = currentDate) => {
+    const d = new Date(date)
+    const day = d.getDay()
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+    d.setDate(diff)
+    return d.toISOString().split('T')[0]
+  }
+
+  const currentWeekStart = getWeekStartString()
+
+  // Get previous week start
+  const getPreviousWeekStart = () => {
+    const d = new Date(currentDate)
+    d.setDate(d.getDate() - 7)
+    return getWeekStartString(d)
+  }
 
   const navigateWeek = (direction) => {
     const newDate = new Date(currentDate)
@@ -127,6 +147,14 @@ function Planning() {
     return count
   }
 
+  // Get all member statuses for a specific day/hour (for Synthese view)
+  const getTeamStatusesForSlot = (dayIndex, hour) => {
+    return members.map(member => {
+      const status = getMemberAvailabilityStatus(member.id, dayIndex, hour)
+      return { member, status }
+    })
+  }
+
   // Apply selected tool status to a cell
   const applyAvailability = async (dayIndex, hour) => {
     if (!selectedMember) return
@@ -155,7 +183,8 @@ function Planning() {
           day_of_week: dayIndex,
           start_time: `${hour.toString().padStart(2, '0')}:00`,
           end_time: `${((hour + 1) % 24).toString().padStart(2, '0')}:00`,
-          status: selectedTool
+          status: selectedTool,
+          week_start: getWeekStartString()
         })
       })
     } else {
@@ -169,6 +198,88 @@ function Planning() {
 
     fetchMemberAvailabilities(selectedMember.id)
     fetchData()
+  }
+
+  // Clear all availabilities for current member for this week
+  const clearAllAvailabilities = async () => {
+    if (!selectedMember) return
+    if (!confirm('Voulez-vous vraiment effacer toutes les disponibilites de cette semaine ?')) return
+
+    // Use the API endpoint to delete all availabilities for this member for this week
+    await fetch(`/api/members/${selectedMember.id}/availabilities?week_start=${getWeekStartString()}`, {
+      method: 'DELETE'
+    })
+
+    fetchMemberAvailabilities(selectedMember.id, getWeekStartString())
+    fetchData(getWeekStartString())
+  }
+
+  // Copy availabilities from another member
+  const copyFromMember = async (sourceMemberId) => {
+    if (!selectedMember || sourceMemberId === selectedMember.id) return
+
+    // Get source member availabilities
+    const sourceAvails = teamAvailabilities.filter(a => a.member_id === sourceMemberId)
+
+    if (sourceAvails.length === 0) {
+      alert('Ce membre n\'a pas de disponibilites definies')
+      return
+    }
+
+    // Clear current member availabilities first
+    for (const avail of availabilities) {
+      await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+    }
+
+    // Copy source availabilities to current member
+    for (const avail of sourceAvails) {
+      await fetch(`/api/members/${selectedMember.id}/availabilities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day_of_week: avail.day_of_week,
+          start_time: avail.start_time,
+          end_time: avail.end_time,
+          status: avail.status || 'available',
+          week_start: getWeekStartString()
+        })
+      })
+    }
+
+    fetchMemberAvailabilities(selectedMember.id, getWeekStartString())
+    fetchData(getWeekStartString())
+  }
+
+  // Copy availabilities from previous week
+  const copyFromPreviousWeek = async () => {
+    if (!selectedMember) return
+
+    const prevWeek = getPreviousWeekStart()
+    const currentWeek = getWeekStartString()
+
+    try {
+      const res = await fetch(`/api/members/${selectedMember.id}/availabilities/copy-week`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_week: prevWeek,
+          to_week: currentWeek
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || 'Erreur lors de la copie')
+        return
+      }
+
+      fetchMemberAvailabilities(selectedMember.id, currentWeek)
+      fetchData(currentWeek)
+    } catch (error) {
+      console.error('Erreur:', error)
+      alert('Erreur lors de la copie de la semaine precedente')
+    }
   }
 
   // Get events for a specific date
@@ -269,22 +380,32 @@ function Planning() {
         <div className="flex gap-6">
           {/* Member List */}
           <div className="w-56 space-y-2">
-            {members.map(member => (
-              <button
-                key={member.id}
-                onClick={() => setSelectedMember(member)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                  selectedMember?.id === member.id
-                    ? 'bg-lol-dark-700 border border-purple-500/50'
-                    : 'bg-lol-dark-800/50 hover:bg-lol-dark-700/50'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-full bg-lol-dark-600 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-lol-dark-400" />
-                </div>
-                <span className="font-medium text-white">{member.pseudo}</span>
-              </button>
-            ))}
+            {members.length === 0 ? (
+              <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-center">
+                <p className="text-red-400 text-sm font-medium">Aucun membre</p>
+                <p className="text-red-400/70 text-xs mt-1">Ajoutez des membres dans le Roster d'abord</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-lol-dark-500 uppercase mb-2">Selectionnez un membre</p>
+                {members.map(member => (
+                  <button
+                    key={member.id}
+                    onClick={() => setSelectedMember(member)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                      selectedMember?.id === member.id
+                        ? 'bg-lol-dark-700 border border-purple-500/50'
+                        : 'bg-lol-dark-800/50 hover:bg-lol-dark-700/50'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-lol-dark-600 flex items-center justify-center">
+                      <Users className="w-4 h-4 text-lol-dark-400" />
+                    </div>
+                    <span className="font-medium text-white">{member.pseudo}</span>
+                  </button>
+                ))}
+              </>
+            )}
 
             {/* Tool Selection */}
             <div className="mt-6 p-4 bg-lol-dark-800/50 rounded-xl">
@@ -348,7 +469,60 @@ function Planning() {
           </div>
 
           {/* Availability Grid */}
-          <div className="flex-1 bg-lol-dark-800/30 rounded-xl overflow-hidden">
+          <div className="flex-1">
+            {/* Selected Member Indicator & Actions */}
+            {selectedMember ? (
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div className="p-3 bg-purple-600/20 border border-purple-500/50 rounded-xl flex items-center gap-3 flex-1">
+                  <Users className="w-5 h-5 text-purple-400" />
+                  <span className="text-white font-medium">Disponibilites de: <span className="text-purple-400">{selectedMember.pseudo}</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Copy from previous week */}
+                  <button
+                    onClick={copyFromPreviousWeek}
+                    className="flex items-center gap-2 px-4 py-3 bg-purple-600/20 border border-purple-500/50 rounded-xl hover:bg-purple-600/30 transition-colors"
+                    title="Copier la semaine d'avant"
+                  >
+                    <RotateCcw className="w-5 h-5 text-purple-400" />
+                    <span className="text-sm text-purple-400 font-medium">Copier semaine precedente</span>
+                  </button>
+                  {/* Copy from another member */}
+                  <div className="relative group">
+                    <button className="p-3 bg-blue-600/20 border border-blue-500/50 rounded-xl hover:bg-blue-600/30 transition-colors" title="Copier depuis un membre">
+                      <Copy className="w-5 h-5 text-blue-400" />
+                    </button>
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-lol-dark-800 border border-lol-dark-600 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                      <p className="text-xs text-lol-dark-400 p-3 border-b border-lol-dark-700">Copier depuis:</p>
+                      {members.filter(m => m.id !== selectedMember.id).map(member => (
+                        <button
+                          key={member.id}
+                          onClick={() => copyFromMember(member.id)}
+                          className="w-full text-left px-3 py-2 text-sm text-white hover:bg-lol-dark-700 transition-colors"
+                        >
+                          {member.pseudo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Clear all */}
+                  <button
+                    onClick={clearAllAvailabilities}
+                    className="p-3 bg-red-600/20 border border-red-500/50 rounded-xl hover:bg-red-600/30 transition-colors"
+                    title="Tout effacer"
+                  >
+                    <Trash2 className="w-5 h-5 text-red-400" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-xl flex items-center gap-3">
+                <Users className="w-5 h-5 text-yellow-400" />
+                <span className="text-yellow-400 font-medium">Selectionnez un membre dans la liste</span>
+              </div>
+            )}
+
+            <div className="bg-lol-dark-800/30 rounded-xl overflow-hidden">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-lol-dark-700">
@@ -410,6 +584,7 @@ function Planning() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -425,11 +600,15 @@ function Planning() {
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-lol-dark-400">5+ Dispo</span>
+                <span className="text-lol-dark-400">Dispo</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                <span className="text-lol-dark-400">Activite</span>
+                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <span className="text-lol-dark-400">Peut-etre</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                <span className="text-lol-dark-400">Indispo</span>
               </div>
             </div>
           </div>
@@ -468,15 +647,16 @@ function Planning() {
                   const count = getTeamAvailabilityCount(dayIdx, hour)
                   const event = getEventAtHour(date, hour)
                   const isFullTeam = count >= 5
+                  const teamStatuses = getTeamStatusesForSlot(dayIdx, hour)
 
                   return (
                     <div
                       key={dayIdx}
-                      className={`relative min-h-[50px] p-2 ${
+                      className={`relative min-h-[60px] p-2 ${
                         event
                           ? 'bg-purple-600/30'
                           : isFullTeam
-                          ? 'bg-green-500/20'
+                          ? 'bg-green-500/10'
                           : ''
                       }`}
                     >
@@ -486,13 +666,35 @@ function Planning() {
                           <p className="text-xs text-white truncate">{event.title.toUpperCase()}</p>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-lol-dark-500">{hour}h</span>
-                          <span className={`font-medium ${
-                            isFullTeam ? 'text-green-400' : 'text-lol-dark-500'
-                          }`}>
-                            {count}/{members.length || 5}
-                          </span>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-lol-dark-500">{hour}h</span>
+                            <span className={`font-medium ${
+                              isFullTeam ? 'text-green-400' : 'text-lol-dark-500'
+                            }`}>
+                              {count}/{members.length || 5}
+                            </span>
+                          </div>
+                          {/* Member status indicators */}
+                          <div className="flex flex-wrap gap-1">
+                            {teamStatuses.map(({ member, status }) => (
+                              <div
+                                key={member.id}
+                                title={`${member.pseudo}: ${status === 'available' ? 'Disponible' : status === 'maybe' ? 'Peut-être' : status === 'unavailable' ? 'Indisponible' : 'Non défini'}`}
+                                className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold ${
+                                  status === 'available'
+                                    ? 'bg-green-500 text-white'
+                                    : status === 'maybe'
+                                    ? 'bg-yellow-500 text-black'
+                                    : status === 'unavailable'
+                                    ? 'bg-red-500 text-white'
+                                    : 'bg-lol-dark-600 text-lol-dark-400'
+                                }`}
+                              >
+                                {member.pseudo.charAt(0).toUpperCase()}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
