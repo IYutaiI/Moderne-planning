@@ -147,6 +147,14 @@ function Planning() {
     return count
   }
 
+  // Get all member statuses for a specific day/hour (for Synthese view)
+  const getTeamStatusesForSlot = (dayIndex, hour) => {
+    return members.map(member => {
+      const status = getMemberAvailabilityStatus(member.id, dayIndex, hour)
+      return { member, status }
+    })
+  }
+
   // Apply selected tool status to a cell
   const applyAvailability = async (dayIndex, hour) => {
     if (!selectedMember) return
@@ -192,18 +200,18 @@ function Planning() {
     fetchData()
   }
 
-  // Clear all availabilities for current member
+  // Clear all availabilities for current member for this week
   const clearAllAvailabilities = async () => {
     if (!selectedMember) return
-    if (!confirm('Voulez-vous vraiment effacer toutes les disponibilites ?')) return
+    if (!confirm('Voulez-vous vraiment effacer toutes les disponibilites de cette semaine ?')) return
 
-    // Delete all availabilities for this member
-    for (const avail of availabilities) {
-      await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
-    }
+    // Use the API endpoint to delete all availabilities for this member for this week
+    await fetch(`/api/members/${selectedMember.id}/availabilities?week_start=${getWeekStartString()}`, {
+      method: 'DELETE'
+    })
 
-    fetchMemberAvailabilities(selectedMember.id)
-    fetchData()
+    fetchMemberAvailabilities(selectedMember.id, getWeekStartString())
+    fetchData(getWeekStartString())
   }
 
   // Copy availabilities from another member
@@ -592,11 +600,15 @@ function Planning() {
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-lol-dark-400">5+ Dispo</span>
+                <span className="text-lol-dark-400">Dispo</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                <span className="text-lol-dark-400">Activite</span>
+                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <span className="text-lol-dark-400">Peut-etre</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                <span className="text-lol-dark-400">Indispo</span>
               </div>
             </div>
           </div>
@@ -635,15 +647,16 @@ function Planning() {
                   const count = getTeamAvailabilityCount(dayIdx, hour)
                   const event = getEventAtHour(date, hour)
                   const isFullTeam = count >= 5
+                  const teamStatuses = getTeamStatusesForSlot(dayIdx, hour)
 
                   return (
                     <div
                       key={dayIdx}
-                      className={`relative min-h-[50px] p-2 ${
+                      className={`relative min-h-[60px] p-2 ${
                         event
                           ? 'bg-purple-600/30'
                           : isFullTeam
-                          ? 'bg-green-500/20'
+                          ? 'bg-green-500/10'
                           : ''
                       }`}
                     >
@@ -653,13 +666,35 @@ function Planning() {
                           <p className="text-xs text-white truncate">{event.title.toUpperCase()}</p>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-lol-dark-500">{hour}h</span>
-                          <span className={`font-medium ${
-                            isFullTeam ? 'text-green-400' : 'text-lol-dark-500'
-                          }`}>
-                            {count}/{members.length || 5}
-                          </span>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-lol-dark-500">{hour}h</span>
+                            <span className={`font-medium ${
+                              isFullTeam ? 'text-green-400' : 'text-lol-dark-500'
+                            }`}>
+                              {count}/{members.length || 5}
+                            </span>
+                          </div>
+                          {/* Member status indicators */}
+                          <div className="flex flex-wrap gap-1">
+                            {teamStatuses.map(({ member, status }) => (
+                              <div
+                                key={member.id}
+                                title={`${member.pseudo}: ${status === 'available' ? 'Disponible' : status === 'maybe' ? 'Peut-être' : status === 'unavailable' ? 'Indisponible' : 'Non défini'}`}
+                                className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold ${
+                                  status === 'available'
+                                    ? 'bg-green-500 text-white'
+                                    : status === 'maybe'
+                                    ? 'bg-yellow-500 text-black'
+                                    : status === 'unavailable'
+                                    ? 'bg-red-500 text-white'
+                                    : 'bg-lol-dark-600 text-lol-dark-400'
+                                }`}
+                              >
+                                {member.pseudo.charAt(0).toUpperCase()}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
