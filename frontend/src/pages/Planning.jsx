@@ -15,6 +15,14 @@ function Planning() {
   const [events, setEvents] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedTool, setSelectedTool] = useState('available') // 'available', 'maybe', 'unavailable', 'clear'
+  const [isDragging, setIsDragging] = useState(false)
+
+  // Handle mouse up globally to stop dragging
+  useEffect(() => {
+    const handleMouseUp = () => setIsDragging(false)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => window.removeEventListener('mouseup', handleMouseUp)
+  }, [])
 
   useEffect(() => {
     fetchData()
@@ -371,10 +379,19 @@ function Planning() {
                         }
                       }
                       return (
-                        <td key={hour} className="p-1">
+                        <td key={hour} className="p-1 select-none">
                           <button
-                            onClick={() => applyAvailability(dayIndex, hour)}
-                            className={`w-full h-8 rounded flex items-center justify-center transition-all ${getStatusStyles()}`}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              setIsDragging(true)
+                              applyAvailability(dayIndex, hour)
+                            }}
+                            onMouseEnter={() => {
+                              if (isDragging) {
+                                applyAvailability(dayIndex, hour)
+                              }
+                            }}
+                            className={`w-full h-8 rounded flex items-center justify-center transition-all cursor-pointer ${getStatusStyles()}`}
                           >
                             {status === 'available' && (
                               <Check className="w-4 h-4 text-green-400" />
