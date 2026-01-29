@@ -269,22 +269,32 @@ function Planning() {
         <div className="flex gap-6">
           {/* Member List */}
           <div className="w-56 space-y-2">
-            {members.map(member => (
-              <button
-                key={member.id}
-                onClick={() => setSelectedMember(member)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                  selectedMember?.id === member.id
-                    ? 'bg-lol-dark-700 border border-purple-500/50'
-                    : 'bg-lol-dark-800/50 hover:bg-lol-dark-700/50'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-full bg-lol-dark-600 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-lol-dark-400" />
-                </div>
-                <span className="font-medium text-white">{member.pseudo}</span>
-              </button>
-            ))}
+            {members.length === 0 ? (
+              <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-center">
+                <p className="text-red-400 text-sm font-medium">Aucun membre</p>
+                <p className="text-red-400/70 text-xs mt-1">Ajoutez des membres dans le Roster d'abord</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-lol-dark-500 uppercase mb-2">Selectionnez un membre</p>
+                {members.map(member => (
+                  <button
+                    key={member.id}
+                    onClick={() => setSelectedMember(member)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                      selectedMember?.id === member.id
+                        ? 'bg-lol-dark-700 border border-purple-500/50'
+                        : 'bg-lol-dark-800/50 hover:bg-lol-dark-700/50'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-lol-dark-600 flex items-center justify-center">
+                      <Users className="w-4 h-4 text-lol-dark-400" />
+                    </div>
+                    <span className="font-medium text-white">{member.pseudo}</span>
+                  </button>
+                ))}
+              </>
+            )}
 
             {/* Tool Selection */}
             <div className="mt-6 p-4 bg-lol-dark-800/50 rounded-xl">
@@ -348,7 +358,21 @@ function Planning() {
           </div>
 
           {/* Availability Grid */}
-          <div className="flex-1 bg-lol-dark-800/30 rounded-xl overflow-hidden">
+          <div className="flex-1">
+            {/* Selected Member Indicator */}
+            {selectedMember ? (
+              <div className="mb-4 p-3 bg-purple-600/20 border border-purple-500/50 rounded-xl flex items-center gap-3">
+                <Users className="w-5 h-5 text-purple-400" />
+                <span className="text-white font-medium">Disponibilites de: <span className="text-purple-400">{selectedMember.pseudo}</span></span>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-xl flex items-center gap-3">
+                <Users className="w-5 h-5 text-yellow-400" />
+                <span className="text-yellow-400 font-medium">Selectionnez un membre dans la liste</span>
+              </div>
+            )}
+
+            <div className="bg-lol-dark-800/30 rounded-xl overflow-hidden">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-lol-dark-700">
@@ -410,6 +434,7 @@ function Planning() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
