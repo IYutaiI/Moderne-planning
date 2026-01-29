@@ -22,7 +22,6 @@ function Members() {
   const [formData, setFormData] = useState({
     pseudo: '',
     riot_id: '',
-    discord: '',
     role: 'MID',
     rank: 'Gold',
     main_champions: ''
@@ -75,8 +74,7 @@ function Members() {
       setEditingMember(member)
       setFormData({
         pseudo: member.pseudo,
-        riot_id: member.riot_id || member.discord || '',
-        discord: member.discord || '',
+        riot_id: member.riot_id || '',
         role: member.role || 'MID',
         rank: member.rank || 'Gold',
         main_champions: member.main_champions || ''
@@ -86,7 +84,6 @@ function Members() {
       setFormData({
         pseudo: '',
         riot_id: '',
-        discord: '',
         role: 'MID',
         rank: 'Gold',
         main_champions: ''
@@ -104,13 +101,22 @@ function Members() {
     return ROLES.find(r => r.value === role) || ROLES[2]
   }
 
+  // Generate OP.GG solo link from Riot ID (format: Name#Tag -> Name-Tag)
+  const getOpggSoloLink = (riotId) => {
+    if (!riotId) return null
+    // Replace # with - and encode for URL
+    const formatted = riotId.replace('#', '-')
+    return `https://www.op.gg/summoners/euw/${encodeURIComponent(formatted)}`
+  }
+
+  // Generate OP.GG Multi link for all members
   const openOpggMulti = () => {
-    const names = members
-      .filter(m => m.riot_id || m.discord)
-      .map(m => (m.riot_id || m.discord).replace('#', '-'))
+    const riotIds = members
+      .filter(m => m.riot_id)
+      .map(m => m.riot_id)
       .join(',')
-    if (names) {
-      window.open(`https://www.op.gg/multisearch/euw?summoners=${encodeURIComponent(names)}`, '_blank')
+    if (riotIds) {
+      window.open(`https://www.op.gg/multisearch/euw?summoners=${encodeURIComponent(riotIds)}`, '_blank')
     }
   }
 
@@ -175,9 +181,19 @@ function Members() {
                     <h3 className="text-lg font-semibold text-white truncate">
                       {member.pseudo}
                     </h3>
-                    <p className="text-sm text-lol-dark-400 truncate">
-                      {member.riot_id || member.discord || 'Pas de Riot ID'}
-                    </p>
+                    {member.riot_id ? (
+                      <a
+                        href={getOpggSoloLink(member.riot_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[#5383e8] hover:text-[#4171d6] truncate flex items-center gap-1"
+                      >
+                        {member.riot_id}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <p className="text-sm text-lol-dark-400 truncate">Pas de Riot ID</p>
+                    )}
                     <p className={`text-sm font-bold mt-1 ${roleData.color}`}>
                       {roleData.label}
                     </p>
@@ -254,29 +270,17 @@ function Members() {
 
               <div>
                 <label className="block text-sm font-medium text-lol-dark-300 mb-2">
-                  Riot ID
+                  Riot ID *
                 </label>
                 <input
                   type="text"
                   value={formData.riot_id}
                   onChange={(e) => setFormData({ ...formData, riot_id: e.target.value })}
                   className="input"
-                  placeholder="NexusPlayer1#EUW"
+                  placeholder="Player#EUW"
+                  required
                 />
-                <p className="text-xs text-lol-dark-500 mt-1">Format: Pseudo#Tag (ex: Player#EUW)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-lol-dark-300 mb-2">
-                  Discord
-                </label>
-                <input
-                  type="text"
-                  value={formData.discord}
-                  onChange={(e) => setFormData({ ...formData, discord: e.target.value })}
-                  className="input"
-                  placeholder="username"
-                />
+                <p className="text-xs text-lol-dark-500 mt-1">Format: Pseudo#Tag (lien OP.GG automatique)</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
