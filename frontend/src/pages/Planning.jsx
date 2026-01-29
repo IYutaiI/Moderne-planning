@@ -14,6 +14,7 @@ function Planning() {
   const [teamAvailabilities, setTeamAvailabilities] = useState([])
   const [events, setEvents] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedTool, setSelectedTool] = useState('available') // 'available', 'maybe', 'unavailable', 'clear'
 
   useEffect(() => {
     fetchData()
@@ -118,8 +119,8 @@ function Planning() {
     return count
   }
 
-  // Toggle availability for current member (cycles: none -> available -> maybe -> unavailable -> none)
-  const toggleAvailability = async (dayIndex, hour) => {
+  // Apply selected tool status to a cell
+  const applyAvailability = async (dayIndex, hour) => {
     if (!selectedMember) return
 
     const currentStatus = getMemberAvailabilityStatus(selectedMember.id, dayIndex, hour)
@@ -132,8 +133,13 @@ function Planning() {
       return hour >= startHour && hour < endHour
     })
 
-    if (currentStatus === null) {
-      // No status -> Create as available (green)
+    // If clearing or the same status, delete
+    if (selectedTool === 'clear' || currentStatus === selectedTool) {
+      if (avail) {
+        await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+      }
+    } else if (currentStatus === null) {
+      // No existing status -> Create new
       await fetch(`/api/members/${selectedMember.id}/availabilities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -141,26 +147,16 @@ function Planning() {
           day_of_week: dayIndex,
           start_time: `${hour.toString().padStart(2, '0')}:00`,
           end_time: `${((hour + 1) % 24).toString().padStart(2, '0')}:00`,
-          status: 'available'
+          status: selectedTool
         })
       })
-    } else if (currentStatus === 'available') {
-      // Available (green) -> Maybe (yellow)
-      await fetch(`/api/availabilities/${avail.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'maybe' })
-      })
-    } else if (currentStatus === 'maybe') {
-      // Maybe (yellow) -> Unavailable (red)
-      await fetch(`/api/availabilities/${avail.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'unavailable' })
-      })
     } else {
-      // Unavailable (red) -> None (delete)
-      await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+      // Update existing status
+      await fetch(`/api/availabilities/${avail.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: selectedTool })
+      })
     }
 
     fetchMemberAvailabilities(selectedMember.id)
@@ -282,30 +278,64 @@ function Planning() {
               </button>
             ))}
 
-            {/* Legend */}
+            {/* Tool Selection */}
             <div className="mt-6 p-4 bg-lol-dark-800/50 rounded-xl">
-              <p className="text-xs text-lol-dark-500 uppercase mb-3">Legende</p>
+              <p className="text-xs text-lol-dark-500 uppercase mb-3">Outil de selection</p>
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-green-500/30 border border-green-500 flex items-center justify-center">
-                    <Check className="w-3 h-3 text-green-400" />
+                <button
+                  onClick={() => setSelectedTool('available')}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
+                    selectedTool === 'available'
+                      ? 'bg-green-500/30 border-2 border-green-500'
+                      : 'bg-lol-dark-700/50 border-2 border-transparent hover:border-green-500/50'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded bg-green-500/30 border border-green-500 flex items-center justify-center">
+                    <Check className="w-4 h-4 text-green-400" />
                   </div>
-                  <span className="text-sm text-lol-dark-300">Disponible</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-yellow-500/30 border border-yellow-500 flex items-center justify-center">
-                    <Minus className="w-3 h-3 text-yellow-400" />
+                  <span className="text-sm text-white font-medium">Disponible</span>
+                </button>
+                <button
+                  onClick={() => setSelectedTool('maybe')}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
+                    selectedTool === 'maybe'
+                      ? 'bg-yellow-500/30 border-2 border-yellow-500'
+                      : 'bg-lol-dark-700/50 border-2 border-transparent hover:border-yellow-500/50'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded bg-yellow-500/30 border border-yellow-500 flex items-center justify-center">
+                    <Minus className="w-4 h-4 text-yellow-400" />
                   </div>
-                  <span className="text-sm text-lol-dark-300">Peut-etre</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-red-500/30 border border-red-500 flex items-center justify-center">
-                    <X className="w-3 h-3 text-red-400" />
+                  <span className="text-sm text-white font-medium">A confirmer</span>
+                </button>
+                <button
+                  onClick={() => setSelectedTool('unavailable')}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
+                    selectedTool === 'unavailable'
+                      ? 'bg-red-500/30 border-2 border-red-500'
+                      : 'bg-lol-dark-700/50 border-2 border-transparent hover:border-red-500/50'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded bg-red-500/30 border border-red-500 flex items-center justify-center">
+                    <X className="w-4 h-4 text-red-400" />
                   </div>
-                  <span className="text-sm text-lol-dark-300">Indisponible</span>
-                </div>
+                  <span className="text-sm text-white font-medium">Indisponible</span>
+                </button>
+                <button
+                  onClick={() => setSelectedTool('clear')}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
+                    selectedTool === 'clear'
+                      ? 'bg-lol-dark-600 border-2 border-lol-dark-400'
+                      : 'bg-lol-dark-700/50 border-2 border-transparent hover:border-lol-dark-400/50'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded bg-lol-dark-600 border border-lol-dark-400 flex items-center justify-center">
+                    <X className="w-4 h-4 text-lol-dark-400" />
+                  </div>
+                  <span className="text-sm text-white font-medium">Effacer</span>
+                </button>
               </div>
-              <p className="text-xs text-lol-dark-500 mt-3">Cliquez pour changer l'etat</p>
+              <p className="text-xs text-lol-dark-500 mt-3">Selectionnez puis cliquez sur les cases</p>
             </div>
           </div>
 
@@ -343,7 +373,7 @@ function Planning() {
                       return (
                         <td key={hour} className="p-1">
                           <button
-                            onClick={() => toggleAvailability(dayIndex, hour)}
+                            onClick={() => applyAvailability(dayIndex, hour)}
                             className={`w-full h-8 rounded flex items-center justify-center transition-all ${getStatusStyles()}`}
                           >
                             {status === 'available' && (
