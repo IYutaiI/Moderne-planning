@@ -185,6 +185,24 @@ db.exec(`
     FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
     FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
   );
+
+  -- Team requests (join or create requests from players)
+  CREATE TABLE IF NOT EXISTS team_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    request_type TEXT NOT NULL,
+    team_id TEXT,
+    team_name TEXT,
+    team_tag TEXT,
+    message TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    processed_by INTEGER,
+    processed_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL
+  );
 `);
 
 // Migrations for existing tables
@@ -418,6 +436,17 @@ app.delete('/api/admin/users/:userId', authenticateToken, (req, res) => {
 
 // Get user's teams with membership info
 app.get('/api/teams', authenticateToken, (req, res) => {
+  // Admin sees all teams
+  if (req.user.role === 'admin') {
+    const teams = db.prepare(`
+      SELECT t.*, 'admin' as membership_type, 'admin' as team_role
+      FROM teams t
+      ORDER BY t.created_at DESC
+    `).all();
+    return res.json(teams);
+  }
+
+  // Regular users see only their teams
   const teams = db.prepare(`
     SELECT DISTINCT t.*, tu.membership_type, tu.role as team_role
     FROM teams t
@@ -585,6 +614,198 @@ app.post('/api/teams/:teamId/leave', authenticateToken, (req, res) => {
 
   db.prepare('DELETE FROM team_users WHERE team_id = ? AND user_id = ?').run(req.params.teamId, req.user.id);
   res.json({ success: true });
+});
+
+// ============ TEAM REQUESTS ROUTES ============
+
+// Get all team requests (for admins/managers)
+app.get('/api/team-requests', authenticateToken, (req, res) => {
+  // Only admin, manager, coach can view requests
+  if (req.user.role === 'joueur') {
+    return res.status(403).json({ error: 'Non autorise' });
+  }
+
+  let requests;
+  if (req.user.role === 'admin') {
+    // Admin sees all pending requests
+    requests = db.prepare(`
+      SELECT tr.*, u.username, u.email, t.name as existing_team_name
+      FROM team_requests tr
+      JOIN users u ON tr.user_id = u.id
+      LEFT JOIN teams t ON tr.team_id = t.id
+      WHERE tr.status = 'pending'
+      ORDER BY tr.created_at DESC
+    `).all();
+  } else {
+    // Managers/coaches see requests for their teams
+    requests = db.prepare(`
+      SELECT tr.*, u.username, u.email, t.name as existing_team_name
+      FROM team_requests tr
+      JOIN users u ON tr.user_id = u.id
+      LEFT JOIN teams t ON tr.team_id = t.id
+      LEFT JOIN team_users tu ON t.id = tu.team_id
+      WHERE tr.status = 'pending'
+      AND (tr.request_type = 'create' OR tu.user_id = ? OR t.owner_id = ?)
+      ORDER BY tr.created_at DESC
+    `).all(req.user.id, req.user.id);
+  }
+
+  res.json(requests);
+});
+
+// Get user's own requests
+app.get('/api/team-requests/mine', authenticateToken, (req, res) => {
+  const requests = db.prepare(`
+    SELECT tr.*, t.name as existing_team_name
+    FROM team_requests tr
+    LEFT JOIN teams t ON tr.team_id = t.id
+    WHERE tr.user_id = ?
+    ORDER BY tr.created_at DESC
+  `).all(req.user.id);
+
+  res.json(requests);
+});
+
+// Create a team request (join or create)
+app.post('/api/team-requests', authenticateToken, (req, res) => {
+  const { request_type, team_id, team_name, team_tag, message } = req.body;
+
+  if (!request_type || !['join', 'create'].includes(request_type)) {
+    return res.status(400).json({ error: 'Type de demande invalide' });
+  }
+
+  if (request_type === 'join' && !team_id) {
+    return res.status(400).json({ error: 'team_id requis pour une demande de rejoindre' });
+  }
+
+  if (request_type === 'create' && !team_name) {
+    return res.status(400).json({ error: 'Nom d\'equipe requis pour une demande de creation' });
+  }
+
+  // Check if user already has a pending request of the same type
+  const existingRequest = db.prepare(`
+    SELECT id FROM team_requests
+    WHERE user_id = ? AND status = 'pending'
+    AND (request_type = ? OR (request_type = 'join' AND team_id = ?))
+  `).get(req.user.id, request_type, team_id || '');
+
+  if (existingRequest) {
+    return res.status(400).json({ error: 'Vous avez deja une demande en attente' });
+  }
+
+  // For join requests, verify team exists
+  if (request_type === 'join') {
+    const team = db.prepare('SELECT id FROM teams WHERE id = ?').get(team_id);
+    if (!team) {
+      return res.status(404).json({ error: 'Equipe non trouvee' });
+    }
+
+    // Check if already a member
+    const existingMembership = db.prepare(`
+      SELECT id FROM team_users WHERE team_id = ? AND user_id = ?
+    `).get(team_id, req.user.id);
+
+    if (existingMembership) {
+      return res.status(400).json({ error: 'Vous etes deja membre de cette equipe' });
+    }
+  }
+
+  const result = db.prepare(`
+    INSERT INTO team_requests (user_id, request_type, team_id, team_name, team_tag, message)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, request_type, team_id || null, team_name || null, team_tag || null, message || null);
+
+  res.status(201).json({ id: result.lastInsertRowid, message: 'Demande envoyee' });
+});
+
+// Approve or reject a request
+app.put('/api/team-requests/:requestId', authenticateToken, (req, res) => {
+  const { status } = req.body; // 'approved' or 'rejected'
+
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Statut invalide' });
+  }
+
+  // Only admin, manager, coach can process requests
+  if (req.user.role === 'joueur') {
+    return res.status(403).json({ error: 'Non autorise' });
+  }
+
+  const request = db.prepare('SELECT * FROM team_requests WHERE id = ?').get(req.params.requestId);
+  if (!request) {
+    return res.status(404).json({ error: 'Demande non trouvee' });
+  }
+
+  if (request.status !== 'pending') {
+    return res.status(400).json({ error: 'Cette demande a deja ete traitee' });
+  }
+
+  // Update request status
+  db.prepare(`
+    UPDATE team_requests
+    SET status = ?, processed_by = ?, processed_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(status, req.user.id, req.params.requestId);
+
+  // If approved, perform the action
+  if (status === 'approved') {
+    if (request.request_type === 'join') {
+      // Add user to team
+      const membershipType = req.user.role === 'joueur' ? 'sub' : 'member';
+      db.prepare(`
+        INSERT OR IGNORE INTO team_users (team_id, user_id, role, membership_type)
+        VALUES (?, ?, 'member', ?)
+      `).run(request.team_id, request.user_id, membershipType);
+    } else if (request.request_type === 'create') {
+      // Create the team with requesting user as owner
+      const teamId = `team_${Date.now()}`;
+      const joinCode = generateJoinCode();
+      db.prepare(`
+        INSERT INTO teams (id, name, tag, join_code, owner_id)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(teamId, request.team_name, request.team_tag || request.team_name.substring(0, 3).toUpperCase(), joinCode, request.user_id);
+
+      // Add user to the team as owner
+      db.prepare(`
+        INSERT INTO team_users (team_id, user_id, role, membership_type)
+        VALUES (?, ?, 'owner', 'main')
+      `).run(teamId, request.user_id);
+    }
+  }
+
+  res.json({ success: true, message: status === 'approved' ? 'Demande approuvee' : 'Demande rejetee' });
+});
+
+// Delete own request
+app.delete('/api/team-requests/:requestId', authenticateToken, (req, res) => {
+  const request = db.prepare('SELECT * FROM team_requests WHERE id = ?').get(req.params.requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: 'Demande non trouvee' });
+  }
+
+  // Only the requester or admin can delete
+  if (request.user_id !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Non autorise' });
+  }
+
+  if (request.status !== 'pending') {
+    return res.status(400).json({ error: 'Impossible de supprimer une demande deja traitee' });
+  }
+
+  db.prepare('DELETE FROM team_requests WHERE id = ?').run(req.params.requestId);
+  res.json({ success: true });
+});
+
+// Get all teams for browsing (for players to request joining)
+app.get('/api/teams/browse', authenticateToken, (req, res) => {
+  const teams = db.prepare(`
+    SELECT t.id, t.name, t.tag,
+           (SELECT COUNT(*) FROM team_users WHERE team_id = t.id) as member_count
+    FROM teams t
+    ORDER BY t.name
+  `).all();
+  res.json(teams);
 });
 
 // ============ MEMBERS ROUTES ============

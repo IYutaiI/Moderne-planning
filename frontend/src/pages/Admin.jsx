@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext'
 import { useTeam } from '../context/TeamContext'
 import {
   Settings, Users, Plus, Trash2, Copy, Check, RefreshCw,
-  Shield, UserPlus, X, Mail, Crown, UserMinus, Eye
+  Shield, UserPlus, X, Mail, Crown, UserMinus, Eye, Inbox,
+  CheckCircle, XCircle, Clock
 } from 'lucide-react'
 
 function Admin() {
@@ -12,6 +13,7 @@ function Admin() {
   const [activeTab, setActiveTab] = useState('teams')
   const [teamMembers, setTeamMembers] = useState([])
   const [allUsers, setAllUsers] = useState([])
+  const [teamRequests, setTeamRequests] = useState([])
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -34,6 +36,12 @@ function Admin() {
     }
   }, [user])
 
+  useEffect(() => {
+    if (user?.role !== 'joueur') {
+      fetchTeamRequests()
+    }
+  }, [user])
+
   const fetchTeamMembers = async () => {
     try {
       const res = await authFetch(`/api/teams/${currentTeam.id}`)
@@ -53,6 +61,38 @@ function Admin() {
       }
     } catch (error) {
       console.error('Erreur:', error)
+    }
+  }
+
+  const fetchTeamRequests = async () => {
+    try {
+      const res = await authFetch('/api/team-requests')
+      if (res.ok) {
+        const data = await res.json()
+        setTeamRequests(data)
+      }
+    } catch (error) {
+      console.error('Erreur:', error)
+    }
+  }
+
+  const handleProcessRequest = async (requestId, status) => {
+    try {
+      const res = await authFetch(`/api/team-requests/${requestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setSuccess(status === 'approved' ? 'Demande approuvee!' : 'Demande rejetee')
+      setTimeout(() => setSuccess(''), 3000)
+      fetchTeamRequests()
+      refreshTeams()
+    } catch (err) {
+      setError(err.message)
+      setTimeout(() => setError(''), 3000)
     }
   }
 
@@ -139,6 +179,8 @@ function Admin() {
     owner: { label: 'Owner', color: 'text-red-400 bg-red-500/20' }
   }
 
+  const pendingRequestsCount = teamRequests.filter(r => r.status === 'pending').length
+
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* Header */}
@@ -190,6 +232,20 @@ function Admin() {
         >
           <Users className="w-4 h-4 inline mr-2" />
           Membres
+        </button>
+        <button
+          onClick={() => setActiveTab('requests')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors relative ${
+            activeTab === 'requests' ? 'bg-purple-600 text-white' : 'text-lol-dark-400 hover:text-white'
+          }`}
+        >
+          <Inbox className="w-4 h-4 inline mr-2" />
+          Demandes
+          {pendingRequestsCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+              {pendingRequestsCount}
+            </span>
+          )}
         </button>
         {user?.role === 'admin' && (
           <button
@@ -325,6 +381,106 @@ function Admin() {
                         <UserMinus className="w-5 h-5" />
                       </button>
                     )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Requests Tab */}
+      {activeTab === 'requests' && (
+        <div className="bg-lol-dark-800/50 rounded-xl border border-lol-dark-700/50 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-white">Demandes en attente</h3>
+            <button
+              onClick={fetchTeamRequests}
+              className="p-2 text-lol-dark-400 hover:text-white hover:bg-lol-dark-700 rounded-lg"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
+
+          {teamRequests.length === 0 ? (
+            <div className="text-center py-12 text-lol-dark-400">
+              <Inbox className="w-16 h-16 mx-auto mb-4 text-lol-dark-600" />
+              <p>Aucune demande en attente</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {teamRequests.map(request => (
+                <div
+                  key={request.id}
+                  className="p-4 bg-lol-dark-800 rounded-xl border border-lol-dark-700"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 rounded-full bg-lol-dark-700 flex items-center justify-center">
+                          {request.request_type === 'join' ? (
+                            <UserPlus className="w-5 h-5 text-green-400" />
+                          ) : (
+                            <Plus className="w-5 h-5 text-purple-400" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-medium text-white">{request.username}</div>
+                          <div className="text-sm text-lol-dark-400">{request.email}</div>
+                        </div>
+                      </div>
+
+                      <div className="ml-13 pl-13">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            request.request_type === 'join'
+                              ? 'bg-green-500/20 text-green-400'
+                              : 'bg-purple-500/20 text-purple-400'
+                          }`}>
+                            {request.request_type === 'join' ? 'Rejoindre' : 'Creer'}
+                          </span>
+                          {request.request_type === 'join' ? (
+                            <span className="text-sm text-white">{request.existing_team_name}</span>
+                          ) : (
+                            <span className="text-sm text-white">"{request.team_name}" [{request.team_tag || '...'}]</span>
+                          )}
+                        </div>
+
+                        {request.message && (
+                          <p className="text-sm text-lol-dark-300 bg-lol-dark-700/50 rounded-lg p-3 mb-2">
+                            {request.message}
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-2 text-xs text-lol-dark-500">
+                          <Clock className="w-3 h-3" />
+                          {new Date(request.created_at).toLocaleDateString('fr-FR', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleProcessRequest(request.id, 'approved')}
+                        className="p-2 bg-green-600 hover:bg-green-500 text-white rounded-lg"
+                        title="Approuver"
+                      >
+                        <CheckCircle className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => handleProcessRequest(request.id, 'rejected')}
+                        className="p-2 bg-red-600 hover:bg-red-500 text-white rounded-lg"
+                        title="Refuser"
+                      >
+                        <XCircle className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
