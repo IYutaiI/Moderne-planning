@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Swords, Plus, Calendar, Clock, Trophy, X, Edit2, Trash2 } from 'lucide-react'
+import { useTeam } from '../context/TeamContext'
+import { useAuth } from '../context/AuthContext'
 
 function Scrims() {
+  const { currentTeam } = useTeam()
+  const { authFetch } = useAuth()
   const [scrims, setScrims] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingScrim, setEditingScrim] = useState(null)
@@ -14,33 +18,75 @@ function Scrims() {
   })
 
   useEffect(() => {
-    // Load scrims from localStorage for now
-    const saved = localStorage.getItem('scrims')
-    if (saved) setScrims(JSON.parse(saved))
-  }, [])
-
-  const saveScrims = (newScrims) => {
-    setScrims(newScrims)
-    localStorage.setItem('scrims', JSON.stringify(newScrims))
-  }
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (editingScrim) {
-      const updated = scrims.map(s =>
-        s.id === editingScrim.id ? { ...formData, id: s.id } : s
-      )
-      saveScrims(updated)
-    } else {
-      const newScrim = { ...formData, id: Date.now() }
-      saveScrims([...scrims, newScrim])
+    if (currentTeam) {
+      fetchScrims()
     }
-    closeModal()
+  }, [currentTeam])
+
+  const fetchScrims = async () => {
+    try {
+      const res = await authFetch(`/api/events?team_id=${currentTeam.id}&event_type=scrim`)
+      const data = await res.json()
+      // Map events to scrims format
+      const mapped = data.map(e => ({
+        id: e.id,
+        opponent: e.title,
+        date: e.event_date,
+        time: e.start_time,
+        result: e.description?.split('|')[0] || '',
+        notes: e.description?.split('|')[1] || ''
+      }))
+      setScrims(mapped)
+    } catch (error) {
+      console.error('Erreur:', error)
+    }
   }
 
-  const handleDelete = (id) => {
-    if (confirm('Supprimer ce scrim ?')) {
-      saveScrims(scrims.filter(s => s.id !== id))
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    try {
+      if (editingScrim) {
+        await authFetch(`/api/events/${editingScrim.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: formData.opponent,
+            event_type: 'scrim',
+            event_date: formData.date,
+            start_time: formData.time,
+            end_time: formData.time,
+            description: `${formData.result}|${formData.notes}`
+          })
+        })
+      } else {
+        await authFetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            team_id: currentTeam.id,
+            title: formData.opponent,
+            event_type: 'scrim',
+            event_date: formData.date,
+            start_time: formData.time,
+            end_time: formData.time,
+            description: `${formData.result}|${formData.notes}`
+          })
+        })
+      }
+      fetchScrims()
+      closeModal()
+    } catch (error) {
+      console.error('Erreur:', error)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('Supprimer ce scrim ?')) return
+    try {
+      await authFetch(`/api/events/${id}`, { method: 'DELETE' })
+      fetchScrims()
+    } catch (error) {
+      console.error('Erreur:', error)
     }
   }
 
@@ -100,30 +146,30 @@ function Scrims() {
       </div>
 
       {/* Upcoming Scrims */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+      <div>
+        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
           <Calendar className="w-5 h-5 text-purple-400" />
           Scrims a venir
         </h2>
         {upcomingScrims.length === 0 ? (
-          <div className="text-center py-8 bg-lol-dark-800/30 rounded-xl">
-            <Swords className="w-12 h-12 text-lol-dark-600 mx-auto mb-3" />
-            <p className="text-lol-dark-400">Aucun scrim prevu</p>
+          <div className="text-center py-12 bg-lol-dark-800/30 rounded-xl border border-lol-dark-700/50">
+            <Swords className="w-16 h-16 text-lol-dark-600 mx-auto mb-4" />
+            <p className="text-lol-dark-400">Aucun scrim planifie</p>
           </div>
         ) : (
           <div className="grid gap-4">
             {upcomingScrims.map(scrim => (
               <div
                 key={scrim.id}
-                className="group flex items-center justify-between p-4 bg-lol-dark-800/50 rounded-xl border border-lol-dark-700/50 hover:border-purple-500/30 transition-colors"
+                className="p-4 bg-lol-dark-800/50 rounded-xl border border-lol-dark-700/50 flex items-center justify-between"
               >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-lg bg-purple-600/20 flex items-center justify-center">
                     <Swords className="w-6 h-6 text-purple-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-white">vs {scrim.opponent}</h3>
-                    <div className="flex items-center gap-3 text-sm text-lol-dark-400">
+                    <h3 className="text-white font-medium">vs {scrim.opponent}</h3>
+                    <div className="flex items-center gap-4 text-sm text-lol-dark-400">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
                         {new Date(scrim.date).toLocaleDateString('fr-FR')}
@@ -135,18 +181,18 @@ function Scrims() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => openModal(scrim)}
-                    className="p-2 rounded-lg bg-lol-dark-700 hover:bg-lol-dark-600 text-lol-dark-300 hover:text-white"
+                    className="p-2 text-lol-dark-400 hover:text-white hover:bg-lol-dark-700 rounded-lg"
                   >
-                    <Edit2 className="w-4 h-4" />
+                    <Edit2 className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => handleDelete(scrim.id)}
-                    className="p-2 rounded-lg bg-lol-dark-700 hover:bg-red-500/20 text-lol-dark-300 hover:text-red-400"
+                    className="p-2 text-lol-dark-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -156,49 +202,42 @@ function Scrims() {
       </div>
 
       {/* Past Scrims */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-lol-gold-400" />
+      <div>
+        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-yellow-400" />
           Historique
         </h2>
         {pastScrims.length === 0 ? (
-          <div className="text-center py-8 bg-lol-dark-800/30 rounded-xl">
-            <p className="text-lol-dark-400">Aucun historique</p>
+          <div className="text-center py-8 bg-lol-dark-800/30 rounded-xl border border-lol-dark-700/50">
+            <p className="text-lol-dark-400">Aucun scrim passe</p>
           </div>
         ) : (
           <div className="grid gap-3">
             {pastScrims.map(scrim => (
               <div
                 key={scrim.id}
-                className="group flex items-center justify-between p-4 bg-lol-dark-800/30 rounded-xl"
+                className="p-4 bg-lol-dark-800/30 rounded-xl border border-lol-dark-700/50 flex items-center justify-between"
               >
                 <div className="flex items-center gap-4">
-                  <div className="text-center min-w-[60px]">
-                    <p className="text-sm text-lol-dark-500">
-                      {new Date(scrim.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
-                    </p>
-                  </div>
                   <div>
-                    <h3 className="font-medium text-white">vs {scrim.opponent}</h3>
-                    {scrim.notes && (
-                      <p className="text-sm text-lol-dark-400">{scrim.notes}</p>
-                    )}
+                    <h3 className="text-white font-medium">vs {scrim.opponent}</h3>
+                    <div className="text-sm text-lol-dark-400">
+                      {new Date(scrim.date).toLocaleDateString('fr-FR')}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   {scrim.result && (
-                    <span className={`text-xl font-bold ${getResultColor(scrim.result)}`}>
+                    <span className={`font-bold text-lg ${getResultColor(scrim.result)}`}>
                       {scrim.result}
                     </span>
                   )}
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openModal(scrim)}
-                      className="p-2 rounded-lg hover:bg-lol-dark-700 text-lol-dark-400 hover:text-white"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => openModal(scrim)}
+                    className="p-2 text-lol-dark-400 hover:text-white hover:bg-lol-dark-700 rounded-lg"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -208,8 +247,8 @@ function Scrims() {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-lol-dark-800 rounded-2xl border border-lol-dark-600 w-full max-w-md animate-fadeIn">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-lol-dark-900 rounded-2xl border border-lol-dark-700 w-full max-w-md animate-fadeIn">
             <div className="flex items-center justify-between p-6 border-b border-lol-dark-700">
               <h2 className="text-xl font-bold text-white">
                 {editingScrim ? 'Modifier le scrim' : 'Nouveau scrim'}
@@ -218,42 +257,47 @@ function Scrims() {
                 onClick={closeModal}
                 className="p-2 rounded-lg hover:bg-lol-dark-700 text-lol-dark-400 hover:text-white"
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-lol-dark-300 mb-2">
-                  Adversaire *
+                  Adversaire
                 </label>
                 <input
                   type="text"
                   value={formData.opponent}
                   onChange={(e) => setFormData({ ...formData, opponent: e.target.value })}
-                  className="input"
-                  placeholder="G2 Academy, Vitality.Bee..."
+                  className="w-full bg-lol-dark-800 border border-lol-dark-600 rounded-lg px-4 py-3 text-white"
+                  placeholder="Nom de l'equipe adverse"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-lol-dark-300 mb-2">Date</label>
+                  <label className="block text-sm font-medium text-lol-dark-300 mb-2">
+                    Date
+                  </label>
                   <input
                     type="date"
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="input"
+                    className="w-full bg-lol-dark-800 border border-lol-dark-600 rounded-lg px-4 py-3 text-white"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-lol-dark-300 mb-2">Heure</label>
+                  <label className="block text-sm font-medium text-lol-dark-300 mb-2">
+                    Heure
+                  </label>
                   <input
                     type="time"
                     value={formData.time}
                     onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                    className="input"
+                    className="w-full bg-lol-dark-800 border border-lol-dark-600 rounded-lg px-4 py-3 text-white"
                   />
                 </div>
               </div>
@@ -266,26 +310,35 @@ function Scrims() {
                   type="text"
                   value={formData.result}
                   onChange={(e) => setFormData({ ...formData, result: e.target.value })}
-                  className="input"
+                  className="w-full bg-lol-dark-800 border border-lol-dark-600 rounded-lg px-4 py-3 text-white"
                   placeholder="2-1"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-lol-dark-300 mb-2">Notes</label>
+                <label className="block text-sm font-medium text-lol-dark-300 mb-2">
+                  Notes
+                </label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="input min-h-[80px]"
+                  className="w-full bg-lol-dark-800 border border-lol-dark-600 rounded-lg px-4 py-3 text-white min-h-[80px]"
                   placeholder="Notes sur le scrim..."
                 />
               </div>
 
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 px-4 py-2 bg-lol-dark-700 hover:bg-lol-dark-600 text-white rounded-lg"
+                >
                   Annuler
                 </button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium">
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium"
+                >
                   {editingScrim ? 'Modifier' : 'Creer'}
                 </button>
               </div>

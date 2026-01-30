@@ -781,10 +781,14 @@ app.get('/api/availabilities/team', authenticateToken, (req, res) => {
 // ============ EVENTS ROUTES ============
 
 app.get('/api/events', authenticateToken, (req, res) => {
-  const { team_id } = req.query;
+  const { team_id, event_type } = req.query;
   let events;
-  if (team_id) {
+  if (team_id && event_type) {
+    events = db.prepare('SELECT * FROM events WHERE team_id = ? AND event_type = ? ORDER BY event_date, start_time').all(team_id, event_type);
+  } else if (team_id) {
     events = db.prepare('SELECT * FROM events WHERE team_id = ? ORDER BY event_date, start_time').all(team_id);
+  } else if (event_type) {
+    events = db.prepare('SELECT * FROM events WHERE event_type = ? ORDER BY event_date, start_time').all(event_type);
   } else {
     events = db.prepare('SELECT * FROM events ORDER BY event_date, start_time').all();
   }

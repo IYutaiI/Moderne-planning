@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import { Calendar, Users, ChevronLeft, ChevronRight, Plus, Check, X, Minus, Copy, Trash2, RotateCcw } from 'lucide-react'
+import { useTeam } from '../context/TeamContext'
+import { useAuth } from '../context/AuthContext'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 const DAYS_SHORT = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM']
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 12) // 12h à 00h
 
 function Planning() {
+  const { currentTeam } = useTeam()
+  const { authFetch } = useAuth()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState('synthese') // 'agenda', 'dispo', 'synthese'
   const [members, setMembers] = useState([])
@@ -25,8 +29,10 @@ function Planning() {
   }, [])
 
   useEffect(() => {
-    fetchData(getWeekStartString())
-  }, [currentDate])
+    if (currentTeam) {
+      fetchData(getWeekStartString())
+    }
+  }, [currentDate, currentTeam])
 
   useEffect(() => {
     if (members.length > 0 && !selectedMember) {
@@ -41,12 +47,13 @@ function Planning() {
   }, [selectedMember, currentDate])
 
   const fetchData = async (weekStart = null) => {
+    if (!currentTeam) return
     const week = weekStart || getWeekStartString()
     try {
       const [membersRes, teamAvailRes, eventsRes] = await Promise.all([
-        fetch('/api/members'),
-        fetch(`/api/availabilities/team?week_start=${week}`),
-        fetch('/api/events')
+        authFetch(`/api/members?team_id=${currentTeam.id}`),
+        authFetch(`/api/availabilities/team?team_id=${currentTeam.id}&week_start=${week}`),
+        authFetch(`/api/events?team_id=${currentTeam.id}`)
       ])
       setMembers(await membersRes.json())
       setTeamAvailabilities(await teamAvailRes.json())
@@ -59,7 +66,7 @@ function Planning() {
   const fetchMemberAvailabilities = async (memberId, weekStart = null) => {
     const week = weekStart || getWeekStartString()
     try {
-      const res = await fetch(`/api/members/${memberId}/availabilities?week_start=${week}`)
+      const res = await authFetch(`/api/members/${memberId}/availabilities?week_start=${week}`)
       setAvailabilities(await res.json())
     } catch (error) {
       console.error('Erreur:', error)
@@ -172,11 +179,11 @@ function Planning() {
     // If clearing or the same status, delete
     if (selectedTool === 'clear' || currentStatus === selectedTool) {
       if (avail) {
-        await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+        await authFetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
       }
     } else if (currentStatus === null) {
       // No existing status -> Create new
-      await fetch(`/api/members/${selectedMember.id}/availabilities`, {
+      await authFetch(`/api/members/${selectedMember.id}/availabilities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -189,7 +196,7 @@ function Planning() {
       })
     } else {
       // Update existing status
-      await fetch(`/api/availabilities/${avail.id}`, {
+      await authFetch(`/api/availabilities/${avail.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: selectedTool })
@@ -206,7 +213,7 @@ function Planning() {
     if (!confirm('Voulez-vous vraiment effacer toutes les disponibilites de cette semaine ?')) return
 
     // Use the API endpoint to delete all availabilities for this member for this week
-    await fetch(`/api/members/${selectedMember.id}/availabilities?week_start=${getWeekStartString()}`, {
+    await authFetch(`/api/members/${selectedMember.id}/availabilities?week_start=${getWeekStartString()}`, {
       method: 'DELETE'
     })
 
@@ -228,12 +235,12 @@ function Planning() {
 
     // Clear current member availabilities first
     for (const avail of availabilities) {
-      await fetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
+      await authFetch(`/api/availabilities/${avail.id}`, { method: 'DELETE' })
     }
 
     // Copy source availabilities to current member
     for (const avail of sourceAvails) {
-      await fetch(`/api/members/${selectedMember.id}/availabilities`, {
+      await authFetch(`/api/members/${selectedMember.id}/availabilities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -258,7 +265,7 @@ function Planning() {
     const currentWeek = getWeekStartString()
 
     try {
-      const res = await fetch(`/api/members/${selectedMember.id}/availabilities/copy-week`, {
+      const res = await authFetch(`/api/members/${selectedMember.id}/availabilities/copy-week`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -762,6 +769,8 @@ function Planning() {
             setIsModalOpen(false)
           }}
           members={members}
+          authFetch={authFetch}
+          teamId={currentTeam?.id}
         />
       )}
     </div>
@@ -769,7 +778,7 @@ function Planning() {
 }
 
 // Event Creation Modal
-function EventModal({ onClose, onSave, members }) {
+function EventModal({ onClose, onSave, members, authFetch, teamId }) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -783,10 +792,10 @@ function EventModal({ onClose, onSave, members }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      await fetch('/api/events', {
+      await authFetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...formData, team_id: teamId })
       })
       onSave()
     } catch (error) {
