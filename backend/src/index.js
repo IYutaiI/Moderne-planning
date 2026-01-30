@@ -58,6 +58,7 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
+    role TEXT DEFAULT 'joueur',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -76,6 +77,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     tag TEXT NOT NULL,
+    join_code TEXT UNIQUE,
     owner_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -87,6 +89,7 @@ db.exec(`
     team_id TEXT NOT NULL,
     user_id INTEGER NOT NULL,
     role TEXT DEFAULT 'member',
+    membership_type TEXT DEFAULT 'main',
     joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -191,11 +194,30 @@ const migrations = [
   "ALTER TABLE events ADD COLUMN team_id TEXT",
   "ALTER TABLE availabilities ADD COLUMN week_start TEXT",
   "ALTER TABLE availabilities ADD COLUMN status TEXT DEFAULT 'available'",
-  "ALTER TABLE members ADD COLUMN riot_id TEXT"
+  "ALTER TABLE members ADD COLUMN riot_id TEXT",
+  "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'joueur'",
+  "ALTER TABLE teams ADD COLUMN join_code TEXT",
+  "ALTER TABLE team_users ADD COLUMN membership_type TEXT DEFAULT 'main'"
 ];
 
 migrations.forEach(sql => {
   try { db.exec(sql); } catch (e) { /* Column already exists */ }
+});
+
+// Generate join codes for existing teams without one
+const generateJoinCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
+
+const teamsWithoutCode = db.prepare('SELECT id FROM teams WHERE join_code IS NULL').all();
+teamsWithoutCode.forEach(team => {
+  const code = generateJoinCode();
+  db.prepare('UPDATE teams SET join_code = ? WHERE id = ?').run(code, team.id);
 });
 
 // ============ AUTH MIDDLEWARE ============
@@ -206,7 +228,7 @@ const authenticateToken = (req, res, next) => {
   }
 
   const session = db.prepare(`
-    SELECT s.*, u.id as user_id, u.username, u.email
+    SELECT s.*, u.id as user_id, u.username, u.email, u.role as user_role
     FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.token = ? AND s.expires_at > datetime('now')
@@ -219,7 +241,8 @@ const authenticateToken = (req, res, next) => {
   req.user = {
     id: session.user_id,
     username: session.username,
-    email: session.email
+    email: session.email,
+    role: session.user_role || 'joueur'
   };
   next();
 };
@@ -249,7 +272,7 @@ const checkTeamAccess = (req, res, next) => {
 
 // Register
 app.post('/api/auth/register', (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, role } = req.body;
 
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Tous les champs sont requis' });
@@ -259,11 +282,14 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 6 caracteres' });
   }
 
+  const validRoles = ['joueur', 'manager', 'coach'];
+  const userRole = validRoles.includes(role) ? role : 'joueur';
+
   try {
     const hashedPassword = hashPassword(password);
     const result = db.prepare(
-      'INSERT INTO users (username, email, password) VALUES (?, ?, ?)'
-    ).run(username, email, hashedPassword);
+      'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)'
+    ).run(username, email, hashedPassword, userRole);
 
     const token = generateToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -273,7 +299,7 @@ app.post('/api/auth/register', (req, res) => {
     ).run(result.lastInsertRowid, token, expiresAt);
 
     res.json({
-      user: { id: result.lastInsertRowid, username, email },
+      user: { id: result.lastInsertRowid, username, email, role: userRole },
       token
     });
   } catch (error) {
@@ -306,7 +332,7 @@ app.post('/api/auth/login', (req, res) => {
   ).run(user.id, token, expiresAt);
 
   res.json({
-    user: { id: user.id, username: user.username, email: user.email },
+    user: { id: user.id, username: user.username, email: user.email, role: user.role || 'joueur' },
     token
   });
 });
@@ -325,14 +351,15 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // ============ TEAMS ROUTES ============
 
-// Get user's teams
+// Get user's teams with membership info
 app.get('/api/teams', authenticateToken, (req, res) => {
   const teams = db.prepare(`
-    SELECT DISTINCT t.* FROM teams t
-    LEFT JOIN team_users tu ON t.id = tu.team_id
+    SELECT DISTINCT t.*, tu.membership_type, tu.role as team_role
+    FROM teams t
+    LEFT JOIN team_users tu ON t.id = tu.team_id AND tu.user_id = ?
     WHERE t.owner_id = ? OR tu.user_id = ?
     ORDER BY t.created_at DESC
-  `).all(req.user.id, req.user.id);
+  `).all(req.user.id, req.user.id, req.user.id);
   res.json(teams);
 });
 
@@ -359,19 +386,26 @@ app.post('/api/teams', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Nom et tag requis' });
   }
 
+  // Only managers and coaches can create teams
+  if (req.user.role === 'joueur') {
+    return res.status(403).json({ error: 'Seuls les managers et coachs peuvent creer des equipes' });
+  }
+
   const teamId = id || `team_${Date.now()}`;
+  const joinCode = generateJoinCode();
 
   try {
     db.prepare(
-      'INSERT INTO teams (id, name, tag, owner_id) VALUES (?, ?, ?, ?)'
-    ).run(teamId, name, tag, req.user.id);
+      'INSERT INTO teams (id, name, tag, join_code, owner_id) VALUES (?, ?, ?, ?, ?)'
+    ).run(teamId, name, tag, joinCode, req.user.id);
 
-    // Add owner to team_users
+    // Add owner to team_users with their role type
+    const membershipType = req.user.role; // manager or coach
     db.prepare(
-      'INSERT INTO team_users (team_id, user_id, role) VALUES (?, ?, ?)'
-    ).run(teamId, req.user.id, 'owner');
+      'INSERT INTO team_users (team_id, user_id, role, membership_type) VALUES (?, ?, ?, ?)'
+    ).run(teamId, req.user.id, 'owner', membershipType);
 
-    res.json({ id: teamId, name, tag, owner_id: req.user.id });
+    res.json({ id: teamId, name, tag, join_code: joinCode, owner_id: req.user.id });
   } catch (error) {
     res.status(400).json({ error: 'Erreur creation equipe' });
   }
@@ -411,6 +445,56 @@ app.post('/api/teams/:teamId/invite', authenticateToken, checkTeamAccess, (req, 
     res.json({ success: true });
   } catch (error) {
     res.status(400).json({ error: 'Utilisateur deja dans l\'equipe' });
+  }
+});
+
+// Join team by code
+app.post('/api/teams/join', authenticateToken, (req, res) => {
+  const { join_code, membership_type } = req.body;
+
+  if (!join_code) {
+    return res.status(400).json({ error: 'Code requis' });
+  }
+
+  const team = db.prepare('SELECT * FROM teams WHERE join_code = ?').get(join_code.toUpperCase());
+  if (!team) {
+    return res.status(404).json({ error: 'Code invalide' });
+  }
+
+  // Check if already in team
+  const existing = db.prepare('SELECT * FROM team_users WHERE team_id = ? AND user_id = ?').get(team.id, req.user.id);
+  if (existing) {
+    return res.status(400).json({ error: 'Vous etes deja dans cette equipe' });
+  }
+
+  // For players: validate membership type
+  if (req.user.role === 'joueur') {
+    const validTypes = ['main', 'sub'];
+    const type = validTypes.includes(membership_type) ? membership_type : 'sub';
+
+    // Check if player already has a main team
+    if (type === 'main') {
+      const hasMain = db.prepare(`
+        SELECT * FROM team_users WHERE user_id = ? AND membership_type = 'main'
+      `).get(req.user.id);
+
+      if (hasMain) {
+        return res.status(400).json({ error: 'Vous avez deja une equipe principale. Rejoignez en tant que sub.' });
+      }
+    }
+
+    db.prepare(
+      'INSERT INTO team_users (team_id, user_id, role, membership_type) VALUES (?, ?, ?, ?)'
+    ).run(team.id, req.user.id, 'member', type);
+
+    res.json({ success: true, team: { ...team, membership_type: type } });
+  } else {
+    // Manager/Coach joins as their role type
+    db.prepare(
+      'INSERT INTO team_users (team_id, user_id, role, membership_type) VALUES (?, ?, ?, ?)'
+    ).run(team.id, req.user.id, 'staff', req.user.role);
+
+    res.json({ success: true, team: { ...team, membership_type: req.user.role } });
   }
 });
 

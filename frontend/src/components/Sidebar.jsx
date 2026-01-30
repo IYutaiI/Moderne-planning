@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Users,
@@ -7,7 +8,12 @@ import {
   BarChart3,
   Gamepad2,
   LogOut,
-  User
+  User,
+  KeyRound,
+  Copy,
+  Check,
+  Trophy,
+  ClipboardList
 } from 'lucide-react'
 import TeamSelector from './TeamSelector'
 import { useTeam } from '../context/TeamContext'
@@ -21,9 +27,26 @@ const navItems = [
   { path: '/stats', icon: BarChart3, label: 'Statistiques' },
 ]
 
-function Sidebar() {
+const roleLabels = {
+  joueur: { label: 'Joueur', color: 'text-yellow-400 bg-yellow-500/20', icon: Trophy },
+  manager: { label: 'Manager', color: 'text-blue-400 bg-blue-500/20', icon: ClipboardList },
+  coach: { label: 'Coach', color: 'text-green-400 bg-green-500/20', icon: Users }
+}
+
+function Sidebar({ onJoinTeam }) {
   const { currentTeam } = useTeam()
   const { user, logout } = useAuth()
+  const [copied, setCopied] = useState(false)
+
+  const roleInfo = roleLabels[user?.role] || roleLabels.joueur
+
+  const copyJoinCode = () => {
+    if (currentTeam?.join_code) {
+      navigator.clipboard.writeText(currentTeam.join_code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-lol-dark-900/95 backdrop-blur-sm border-r border-lol-dark-700 z-50 flex flex-col">
@@ -42,6 +65,38 @@ function Sidebar() {
       {/* Team Selector */}
       <div className="p-4 border-b border-lol-dark-700">
         <TeamSelector />
+
+        {/* Join Code (for managers/coaches) */}
+        {currentTeam?.join_code && user?.role !== 'joueur' && (
+          <div className="mt-3 p-2 bg-lol-dark-800/50 rounded-lg">
+            <div className="text-xs text-lol-dark-500 mb-1">Code d'invitation</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-sm font-mono text-purple-400">{currentTeam.join_code}</code>
+              <button
+                onClick={copyJoinCode}
+                className="p-1 hover:bg-lol-dark-700 rounded transition-colors"
+                title="Copier"
+              >
+                {copied ? (
+                  <Check className="w-4 h-4 text-green-400" />
+                ) : (
+                  <Copy className="w-4 h-4 text-lol-dark-400" />
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Join Team Button */}
+        {onJoinTeam && (
+          <button
+            onClick={onJoinTeam}
+            className="w-full mt-3 flex items-center justify-center gap-2 px-3 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 rounded-lg text-sm transition-colors"
+          >
+            <KeyRound className="w-4 h-4" />
+            Rejoindre une equipe
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
@@ -73,7 +128,12 @@ function Sidebar() {
             <User className="w-4 h-4 text-lol-dark-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-white truncate">{user?.username}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-white truncate">{user?.username}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${roleInfo.color}`}>
+                {roleInfo.label}
+              </span>
+            </div>
             <div className="text-xs text-lol-dark-500 truncate">{user?.email}</div>
           </div>
         </div>

@@ -1,10 +1,21 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTeam } from '../context/TeamContext'
-import { ChevronDown, Plus, Trash2, X, Shield, Edit2, Check } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { ChevronDown, Plus, Trash2, X, Shield, Edit2, Check, Star, Users } from 'lucide-react'
+
+const membershipBadges = {
+  main: { label: 'Main', color: 'text-yellow-400 bg-yellow-500/20' },
+  sub: { label: 'Sub', color: 'text-blue-400 bg-blue-500/20' },
+  manager: { label: 'Manager', color: 'text-purple-400 bg-purple-500/20' },
+  coach: { label: 'Coach', color: 'text-green-400 bg-green-500/20' },
+  owner: { label: 'Owner', color: 'text-red-400 bg-red-500/20' }
+}
 
 function TeamSelector() {
   const { teams, currentTeam, createTeam, deleteTeam, selectTeam, updateTeam } = useTeam()
+  const { user } = useAuth()
+  const canCreateTeam = user?.role !== 'joueur'
   const [isOpen, setIsOpen] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newTeamName, setNewTeamName] = useState('')
@@ -57,7 +68,14 @@ function TeamSelector() {
             </div>
             {currentTeam ? (
               <div className="text-left">
-                <div className="text-sm font-medium text-white">{currentTeam.name}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-white">{currentTeam.name}</span>
+                  {currentTeam.membership_type && membershipBadges[currentTeam.membership_type] && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${membershipBadges[currentTeam.membership_type].color}`}>
+                      {membershipBadges[currentTeam.membership_type].label}
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-lol-dark-400">[{currentTeam.tag}]</div>
               </div>
             ) : (
@@ -125,23 +143,34 @@ function TeamSelector() {
                             <span className="text-xs font-bold text-white">{team.tag.substring(0, 2)}</span>
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-white">{team.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-white">{team.name}</span>
+                              {team.membership_type && membershipBadges[team.membership_type] && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${membershipBadges[team.membership_type].color}`}>
+                                  {membershipBadges[team.membership_type].label}
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs text-lol-dark-400">[{team.tag}]</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={(e) => handleEditTeam(e, team)}
-                            className="p-1 text-lol-dark-400 hover:text-white"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => handleDeleteTeam(e, team.id)}
-                            className="p-1 text-lol-dark-400 hover:text-red-400"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canCreateTeam && (
+                            <>
+                              <button
+                                onClick={(e) => handleEditTeam(e, team)}
+                                className="p-1 text-lol-dark-400 hover:text-white"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteTeam(e, team.id)}
+                                className="p-1 text-lol-dark-400 hover:text-red-400"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </>
                     )}
@@ -150,19 +179,21 @@ function TeamSelector() {
               )}
             </div>
 
-            {/* Create Team Button */}
-            <div className="border-t border-lol-dark-600">
-              <button
-                onClick={() => {
-                  setIsOpen(false)
-                  setIsModalOpen(true)
-                }}
-                className="w-full flex items-center gap-2 px-4 py-3 text-purple-400 hover:bg-lol-dark-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-medium">Creer une equipe</span>
-              </button>
-            </div>
+            {/* Create Team Button (only for managers/coaches) */}
+            {canCreateTeam && (
+              <div className="border-t border-lol-dark-600">
+                <button
+                  onClick={() => {
+                    setIsOpen(false)
+                    setIsModalOpen(true)
+                  }}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-purple-400 hover:bg-lol-dark-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-medium">Creer une equipe</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

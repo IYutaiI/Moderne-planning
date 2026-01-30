@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Gamepad2, Mail, Lock, User, AlertCircle } from 'lucide-react'
+import { Gamepad2, Mail, Lock, User, AlertCircle, Users, Trophy, ClipboardList } from 'lucide-react'
 
 function Auth() {
   const { login, register } = useAuth()
@@ -11,7 +11,8 @@ function Auth() {
     username: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    role: 'joueur'
   })
 
   const handleSubmit = async (e) => {
@@ -26,7 +27,7 @@ function Auth() {
         if (formData.password !== formData.confirmPassword) {
           throw new Error('Les mots de passe ne correspondent pas')
         }
-        await register(formData.username, formData.email, formData.password)
+        await register(formData.username, formData.email, formData.password, formData.role)
       }
     } catch (err) {
       setError(err.message)
@@ -42,9 +43,16 @@ function Auth() {
       username: '',
       email: '',
       password: '',
-      confirmPassword: ''
+      confirmPassword: '',
+      role: 'joueur'
     })
   }
+
+  const roles = [
+    { id: 'joueur', label: 'Joueur', icon: Trophy, desc: '1 equipe main + subs' },
+    { id: 'manager', label: 'Manager', icon: ClipboardList, desc: 'Gere plusieurs equipes' },
+    { id: 'coach', label: 'Coach', icon: Users, desc: 'Coache plusieurs equipes' }
+  ]
 
   return (
     <div className="min-h-screen bg-lol-dark-900 flex items-center justify-center p-4">
@@ -142,6 +150,32 @@ function Auth() {
                     required={!isLogin}
                     minLength={6}
                   />
+                </div>
+              </div>
+            )}
+
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-lol-dark-300 mb-3">
+                  Je suis...
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {roles.map(role => (
+                    <button
+                      key={role.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, role: role.id })}
+                      className={`p-3 rounded-lg border text-center transition-all ${
+                        formData.role === role.id
+                          ? 'border-purple-500 bg-purple-500/20 text-purple-400'
+                          : 'border-lol-dark-600 bg-lol-dark-700 text-lol-dark-300 hover:border-lol-dark-500'
+                      }`}
+                    >
+                      <role.icon className="w-5 h-5 mx-auto mb-1" />
+                      <div className="text-sm font-medium">{role.label}</div>
+                      <div className="text-xs text-lol-dark-500 mt-1">{role.desc}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
