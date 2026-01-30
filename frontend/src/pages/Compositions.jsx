@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Layers, Plus, Edit2, Trash2, X, Search } from 'lucide-react'
 import { useTeam } from '../context/TeamContext'
+import { useAuth } from '../context/AuthContext'
 
 const ROLES = [
   { key: 'top', label: 'Toplane' },
@@ -16,7 +17,8 @@ const getChampionIcon = (championId) =>
   `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${championId}.png`
 
 function Compositions() {
-  const { currentTeam, getTeamData, setTeamData } = useTeam()
+  const { currentTeam } = useTeam()
+  const { authFetch } = useAuth()
   const [strategies, setStrategies] = useState([])
   const [champions, setChampions] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -37,8 +39,7 @@ function Compositions() {
 
   useEffect(() => {
     if (currentTeam) {
-      const saved = getTeamData('compositions', [])
-      setStrategies(saved)
+      fetchCompositions()
     }
   }, [currentTeam])
 
@@ -57,28 +58,46 @@ function Compositions() {
     }
   }
 
-  const saveStrategies = (newStrategies) => {
-    setStrategies(newStrategies)
-    setTeamData('compositions', newStrategies)
-  }
-
-  const handleSubmit = () => {
-    const now = new Date().toISOString()
-    if (editingStrategy) {
-      const updated = strategies.map(s =>
-        s.id === editingStrategy.id ? { ...formData, id: s.id, updatedAt: now } : s
-      )
-      saveStrategies(updated)
-    } else {
-      const newStrategy = { ...formData, id: Date.now(), createdAt: now, updatedAt: now }
-      saveStrategies([...strategies, newStrategy])
+  const fetchCompositions = async () => {
+    try {
+      const res = await authFetch(`/api/compositions?team_id=${currentTeam.id}`)
+      const data = await res.json()
+      setStrategies(data)
+    } catch (error) {
+      console.error('Erreur chargement compositions:', error)
     }
-    closeModal()
   }
 
-  const handleDelete = (id) => {
+  const handleSubmit = async () => {
+    try {
+      if (editingStrategy) {
+        await authFetch(`/api/compositions/${editingStrategy.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        })
+      } else {
+        await authFetch('/api/compositions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...formData, team_id: currentTeam.id })
+        })
+      }
+      fetchCompositions()
+      closeModal()
+    } catch (error) {
+      console.error('Erreur sauvegarde:', error)
+    }
+  }
+
+  const handleDelete = async (id) => {
     if (confirm('Supprimer cette strategie ?')) {
-      saveStrategies(strategies.filter(s => s.id !== id))
+      try {
+        await authFetch(`/api/compositions/${id}`, { method: 'DELETE' })
+        fetchCompositions()
+      } catch (error) {
+        console.error('Erreur suppression:', error)
+      }
     }
   }
 

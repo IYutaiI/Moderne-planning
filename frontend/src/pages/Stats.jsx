@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { BarChart3, Sword, Zap, Target, Users, Plus, Trash2, X, Trophy, Clock, Calendar } from 'lucide-react'
 import { useTeam } from '../context/TeamContext'
+import { useAuth } from '../context/AuthContext'
 
 const DDRAGON_VERSION = '15.2.1'
 const getChampionIcon = (championId) =>
   `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${championId}.png`
 
 function Stats() {
-  const { currentTeam, getTeamData, setTeamData } = useTeam()
+  const { currentTeam } = useTeam()
+  const { authFetch } = useAuth()
   const [activeTab, setActiveTab] = useState('stats')
   const [members, setMembers] = useState([])
   const [champions, setChampions] = useState([])
@@ -29,14 +31,13 @@ function Stats() {
   useEffect(() => {
     if (currentTeam) {
       fetchMembers()
-      const savedGames = getTeamData('gameHistory', [])
-      setGames(savedGames)
+      fetchGames()
     }
   }, [currentTeam])
 
   const fetchMembers = async () => {
     try {
-      const res = await fetch(`/api/members?team_id=${currentTeam.id}`)
+      const res = await authFetch(`/api/members?team_id=${currentTeam.id}`)
       const data = await res.json()
       setMembers(data)
       setNewGame(prev => ({
@@ -57,6 +58,16 @@ function Stats() {
     }
   }
 
+  const fetchGames = async () => {
+    try {
+      const res = await authFetch(`/api/games?team_id=${currentTeam.id}`)
+      const data = await res.json()
+      setGames(data)
+    } catch (error) {
+      console.error('Erreur:', error)
+    }
+  }
+
   const fetchChampions = async () => {
     try {
       const res = await fetch(`https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/data/fr_FR/champion.json`)
@@ -71,23 +82,34 @@ function Stats() {
     }
   }
 
-  const saveGames = (newGames) => {
-    setGames(newGames)
-    setTeamData('gameHistory', newGames)
-  }
-
-  const handleAddGame = () => {
-    const game = {
-      ...newGame,
-      id: Date.now()
+  const handleAddGame = async () => {
+    try {
+      await authFetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_id: currentTeam.id,
+          game_date: newGame.date,
+          opponent: newGame.opponent,
+          result: newGame.result,
+          duration: newGame.duration,
+          players: newGame.players
+        })
+      })
+      fetchGames()
+      closeModal()
+    } catch (error) {
+      console.error('Erreur:', error)
     }
-    saveGames([game, ...games])
-    closeModal()
   }
 
-  const handleDeleteGame = (id) => {
-    if (confirm('Supprimer cette game ?')) {
-      saveGames(games.filter(g => g.id !== id))
+  const handleDeleteGame = async (id) => {
+    if (!confirm('Supprimer cette game ?')) return
+    try {
+      await authFetch(`/api/games/${id}`, { method: 'DELETE' })
+      fetchGames()
+    } catch (error) {
+      console.error('Erreur:', error)
     }
   }
 
@@ -153,7 +175,7 @@ function Stats() {
 
   // Calculate player stats from games
   const calculatePlayerStats = (memberId) => {
-    const playerGames = games.filter(g => g.players.some(p => p.memberId === memberId))
+    const playerGames = games.filter(g => g.players.some(p => (p.memberId || p.member_id) === memberId))
     if (playerGames.length === 0) {
       return { games: 0, kda: '0.00', kp: 0, cs: 0, csMin: 0, goldPercent: 0 }
     }
@@ -161,7 +183,7 @@ function Stats() {
     let kills = 0, deaths = 0, assists = 0, cs = 0, gold = 0, totalTeamKills = 0, totalTeamGold = 0, totalDuration = 0
 
     playerGames.forEach(game => {
-      const player = game.players.find(p => p.memberId === memberId)
+      const player = game.players.find(p => (p.memberId || p.member_id) === memberId)
       const teamKills = game.players.reduce((sum, p) => sum + p.kills, 0)
       const teamGold = game.players.reduce((sum, p) => sum + p.gold, 0)
 
@@ -521,7 +543,7 @@ function Stats() {
                       <div className="text-white font-medium">vs {game.opponent || 'Equipe adverse'}</div>
                       <div className="text-lol-dark-400 text-sm flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        {new Date(game.date).toLocaleDateString('fr-FR')}
+                        {new Date(game.game_date || game.date).toLocaleDateString('fr-FR')}
                       </div>
                       <div className="text-lol-dark-400 text-sm">
                         {game.duration} min

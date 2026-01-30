@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Users, Plus, Edit2, Trash2, X, Save, ExternalLink } from 'lucide-react'
 import { useTeam } from '../context/TeamContext'
+import { useAuth } from '../context/AuthContext'
 
 const ROLES = [
   { value: 'TOP', label: 'TOP', color: 'text-red-400' },
@@ -18,6 +19,7 @@ const RANKS = [
 
 function Members() {
   const { currentTeam } = useTeam()
+  const { authFetch } = useAuth()
   const [members, setMembers] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
@@ -37,7 +39,7 @@ function Members() {
 
   const fetchMembers = async () => {
     try {
-      const res = await fetch(`/api/members?team_id=${currentTeam.id}`)
+      const res = await authFetch(`/api/members?team_id=${currentTeam.id}`)
       setMembers(await res.json())
     } catch (error) {
       console.error('Erreur:', error)
@@ -54,7 +56,7 @@ function Members() {
         ? formData
         : { ...formData, team_id: currentTeam.id }
 
-      await fetch(url, {
+      await authFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -70,7 +72,7 @@ function Members() {
   const handleDelete = async (id) => {
     if (!confirm('Supprimer ce membre ?')) return
     try {
-      await fetch(`/api/members/${id}`, { method: 'DELETE' })
+      await authFetch(`/api/members/${id}`, { method: 'DELETE' })
       fetchMembers()
     } catch (error) {
       console.error('Erreur:', error)

@@ -5,10 +5,13 @@ import {
   Layers,
   Wand2,
   BarChart3,
-  Gamepad2
+  Gamepad2,
+  LogOut,
+  User
 } from 'lucide-react'
 import TeamSelector from './TeamSelector'
 import { useTeam } from '../context/TeamContext'
+import { useAuth } from '../context/AuthContext'
 
 const navItems = [
   { path: '/members', icon: Users, label: 'Roster' },
@@ -20,6 +23,7 @@ const navItems = [
 
 function Sidebar() {
   const { currentTeam } = useTeam()
+  const { user, logout } = useAuth()
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-lol-dark-900/95 backdrop-blur-sm border-r border-lol-dark-700 z-50 flex flex-col">
@@ -62,14 +66,25 @@ function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
-      {currentTeam && (
-        <div className="p-4 border-t border-lol-dark-700">
-          <div className="text-xs text-lol-dark-500 text-center">
-            Equipe: <span className="text-purple-400">{currentTeam.name}</span>
+      {/* User Info & Logout */}
+      <div className="p-4 border-t border-lol-dark-700">
+        <div className="flex items-center gap-3 px-4 py-3 mb-2">
+          <div className="w-8 h-8 rounded-full bg-lol-dark-700 flex items-center justify-center">
+            <User className="w-4 h-4 text-lol-dark-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-white truncate">{user?.username}</div>
+            <div className="text-xs text-lol-dark-500 truncate">{user?.email}</div>
           </div>
         </div>
-      )}
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-lol-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+        >
+          <LogOut className="w-5 h-5" />
+          <span className="font-medium">Deconnexion</span>
+        </button>
+      </div>
     </aside>
   )
 }

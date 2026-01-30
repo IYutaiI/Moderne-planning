@@ -1,13 +1,26 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { TeamProvider, useTeam } from './context/TeamContext'
 import Sidebar from './components/Sidebar'
+import Auth from './pages/Auth'
 import Members from './pages/Members'
 import Planning from './pages/Planning'
 import Scrims from './pages/Scrims'
 import Compositions from './pages/Compositions'
 import DraftSimulation from './pages/DraftSimulation'
 import Stats from './pages/Stats'
-import { Shield } from 'lucide-react'
+import { Shield, Loader2 } from 'lucide-react'
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen bg-lol-dark-900 flex items-center justify-center">
+      <div className="text-center">
+        <Loader2 className="w-12 h-12 text-purple-500 animate-spin mx-auto mb-4" />
+        <p className="text-lol-dark-400">Chargement...</p>
+      </div>
+    </div>
+  )
+}
 
 function NoTeamSelected() {
   return (
@@ -27,7 +40,11 @@ function NoTeamSelected() {
 }
 
 function AppContent() {
-  const { currentTeam } = useTeam()
+  const { currentTeam, loading: teamLoading } = useTeam()
+
+  if (teamLoading) {
+    return <LoadingScreen />
+  }
 
   return (
     <div className="flex min-h-screen">
@@ -51,11 +68,29 @@ function AppContent() {
   )
 }
 
-function App() {
+function AuthenticatedApp() {
+  const { isAuthenticated, loading } = useAuth()
+
+  if (loading) {
+    return <LoadingScreen />
+  }
+
+  if (!isAuthenticated) {
+    return <Auth />
+  }
+
   return (
     <TeamProvider>
       <AppContent />
     </TeamProvider>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
   )
 }
 

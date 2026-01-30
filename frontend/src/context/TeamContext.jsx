@@ -1,19 +1,27 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { useAuth } from './AuthContext'
 
 const TeamContext = createContext()
 
 export function TeamProvider({ children }) {
+  const { authFetch, isAuthenticated } = useAuth()
   const [teams, setTeams] = useState([])
   const [currentTeam, setCurrentTeam] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchTeams()
-  }, [])
+    if (isAuthenticated) {
+      fetchTeams()
+    } else {
+      setTeams([])
+      setCurrentTeam(null)
+      setLoading(false)
+    }
+  }, [isAuthenticated])
 
   const fetchTeams = async () => {
     try {
-      const res = await fetch('/api/teams')
+      const res = await authFetch('/api/teams')
       const data = await res.json()
       setTeams(data)
 
@@ -25,17 +33,6 @@ export function TeamProvider({ children }) {
       }
     } catch (error) {
       console.error('Erreur chargement equipes:', error)
-      // Fallback to localStorage if API fails
-      const savedTeams = localStorage.getItem('teams')
-      if (savedTeams) {
-        const parsedTeams = JSON.parse(savedTeams)
-        setTeams(parsedTeams)
-        const lastTeamId = localStorage.getItem('currentTeamId')
-        if (lastTeamId) {
-          const team = parsedTeams.find(t => t.id === lastTeamId)
-          if (team) setCurrentTeam(team)
-        }
-      }
     } finally {
       setLoading(false)
     }
@@ -45,51 +42,43 @@ export function TeamProvider({ children }) {
     const newTeam = {
       id: `team_${Date.now()}`,
       name,
-      tag: tag || name.substring(0, 3).toUpperCase(),
-      createdAt: new Date().toISOString()
+      tag: tag || name.substring(0, 3).toUpperCase()
     }
 
     try {
-      await fetch('/api/teams', {
+      const res = await authFetch('/api/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTeam)
       })
+      const data = await res.json()
+      const updatedTeams = [...teams, data]
+      setTeams(updatedTeams)
+      selectTeam(data)
+      return data
     } catch (error) {
       console.error('Erreur creation equipe:', error)
+      throw error
     }
-
-    // Also save to localStorage as backup
-    const updatedTeams = [...teams, newTeam]
-    setTeams(updatedTeams)
-    localStorage.setItem('teams', JSON.stringify(updatedTeams))
-    selectTeam(newTeam)
-    return newTeam
   }
 
   const deleteTeam = async (teamId) => {
     try {
-      await fetch(`/api/teams/${teamId}`, { method: 'DELETE' })
+      await authFetch(`/api/teams/${teamId}`, { method: 'DELETE' })
+      const updatedTeams = teams.filter(t => t.id !== teamId)
+      setTeams(updatedTeams)
+
+      if (currentTeam?.id === teamId) {
+        if (updatedTeams.length > 0) {
+          selectTeam(updatedTeams[0])
+        } else {
+          setCurrentTeam(null)
+          localStorage.removeItem('currentTeamId')
+        }
+      }
     } catch (error) {
       console.error('Erreur suppression equipe:', error)
-    }
-
-    const updatedTeams = teams.filter(t => t.id !== teamId)
-    setTeams(updatedTeams)
-    localStorage.setItem('teams', JSON.stringify(updatedTeams))
-
-    // Clean up localStorage data
-    localStorage.removeItem(`compositions_${teamId}`)
-    localStorage.removeItem(`gameHistory_${teamId}`)
-
-    // If current team was deleted, switch to another
-    if (currentTeam?.id === teamId) {
-      if (updatedTeams.length > 0) {
-        selectTeam(updatedTeams[0])
-      } else {
-        setCurrentTeam(null)
-        localStorage.removeItem('currentTeamId')
-      }
+      throw error
     }
   }
 
@@ -100,44 +89,41 @@ export function TeamProvider({ children }) {
 
   const updateTeam = async (teamId, updates) => {
     try {
-      await fetch(`/api/teams/${teamId}`, {
+      await authFetch(`/api/teams/${teamId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       })
+
+      const updatedTeams = teams.map(t =>
+        t.id === teamId ? { ...t, ...updates } : t
+      )
+      setTeams(updatedTeams)
+
+      if (currentTeam?.id === teamId) {
+        setCurrentTeam({ ...currentTeam, ...updates })
+      }
     } catch (error) {
       console.error('Erreur mise a jour equipe:', error)
-    }
-
-    const updatedTeams = teams.map(t =>
-      t.id === teamId ? { ...t, ...updates } : t
-    )
-    setTeams(updatedTeams)
-    localStorage.setItem('teams', JSON.stringify(updatedTeams))
-
-    if (currentTeam?.id === teamId) {
-      setCurrentTeam({ ...currentTeam, ...updates })
+      throw error
     }
   }
 
-  // Helper to get storage key for current team
-  const getStorageKey = (key) => {
-    if (!currentTeam) return null
-    return `${key}_${currentTeam.id}`
-  }
-
-  // Helper to get/set team-specific data from localStorage
-  const getTeamData = (key, defaultValue = null) => {
-    const storageKey = getStorageKey(key)
-    if (!storageKey) return defaultValue
-    const data = localStorage.getItem(storageKey)
-    return data ? JSON.parse(data) : defaultValue
-  }
-
-  const setTeamData = (key, value) => {
-    const storageKey = getStorageKey(key)
-    if (!storageKey) return
-    localStorage.setItem(storageKey, JSON.stringify(value))
+  const inviteUser = async (teamId, email) => {
+    try {
+      const res = await authFetch(`/api/teams/${teamId}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+    } catch (error) {
+      console.error('Erreur invitation:', error)
+      throw error
+    }
   }
 
   return (
@@ -149,9 +135,8 @@ export function TeamProvider({ children }) {
       deleteTeam,
       selectTeam,
       updateTeam,
-      getStorageKey,
-      getTeamData,
-      setTeamData
+      inviteUser,
+      refreshTeams: fetchTeams
     }}>
       {children}
     </TeamContext.Provider>
