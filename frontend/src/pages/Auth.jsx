@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Gamepad2, Mail, Lock, User, AlertCircle, Users, Trophy, ClipboardList } from 'lucide-react'
+import { Gamepad2, Mail, Lock, User, AlertCircle, Users, Trophy, ClipboardList, Shield, Zap } from 'lucide-react'
 
 function Auth() {
   const { login, register } = useAuth()
@@ -14,6 +14,25 @@ function Auth() {
     confirmPassword: '',
     role: 'joueur'
   })
+
+  const testAccounts = [
+    { email: 'joueur@test.com', password: 'test123', label: 'Joueur', color: 'bg-yellow-600 hover:bg-yellow-500', icon: Trophy },
+    { email: 'coach@test.com', password: 'test123', label: 'Coach', color: 'bg-green-600 hover:bg-green-500', icon: Users },
+    { email: 'manager@test.com', password: 'test123', label: 'Manager', color: 'bg-blue-600 hover:bg-blue-500', icon: ClipboardList },
+    { email: 'admin@test.com', password: 'admin123', label: 'Admin', color: 'bg-red-600 hover:bg-red-500', icon: Shield }
+  ]
+
+  const handleTestLogin = async (account) => {
+    setError('')
+    setLoading(true)
+    try {
+      await login(account.email, account.password)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -197,6 +216,30 @@ function Auth() {
               {isLogin ? 'Pas de compte ? S\'inscrire' : 'Deja un compte ? Se connecter'}
             </button>
           </div>
+        </div>
+
+        {/* Test Accounts */}
+        <div className="mt-6 bg-lol-dark-800/50 rounded-2xl border border-lol-dark-700 p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Zap className="w-4 h-4 text-yellow-400" />
+            <span className="text-sm font-medium text-lol-dark-300">Comptes de test</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {testAccounts.map(account => (
+              <button
+                key={account.email}
+                onClick={() => handleTestLogin(account)}
+                disabled={loading}
+                className={`flex items-center justify-center gap-2 px-3 py-2 ${account.color} disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors`}
+              >
+                <account.icon className="w-4 h-4" />
+                {account.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-lol-dark-500 mt-3 text-center">
+            Code equipe test: TESTCODE
+          </p>
         </div>
       </div>
     </div>

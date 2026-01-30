@@ -11,6 +11,7 @@ import Scrims from './pages/Scrims'
 import Compositions from './pages/Compositions'
 import DraftSimulation from './pages/DraftSimulation'
 import Stats from './pages/Stats'
+import Admin from './pages/Admin'
 import { Shield, Loader2, Plus, KeyRound } from 'lucide-react'
 
 function LoadingScreen() {
@@ -182,6 +183,7 @@ function AppContent() {
             <Route path="/compositions" element={<Compositions />} />
             <Route path="/draft" element={<DraftSimulation />} />
             <Route path="/stats" element={<Stats />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         )}
       </main>

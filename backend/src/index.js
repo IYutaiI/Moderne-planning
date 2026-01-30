@@ -220,6 +220,46 @@ teamsWithoutCode.forEach(team => {
   db.prepare('UPDATE teams SET join_code = ? WHERE id = ?').run(code, team.id);
 });
 
+// ============ CREATE TEST ACCOUNTS ============
+const createTestAccounts = () => {
+  const testAccounts = [
+    { username: 'TestJoueur', email: 'joueur@test.com', password: 'test123', role: 'joueur' },
+    { username: 'TestCoach', email: 'coach@test.com', password: 'test123', role: 'coach' },
+    { username: 'TestManager', email: 'manager@test.com', password: 'test123', role: 'manager' },
+    { username: 'Admin', email: 'admin@test.com', password: 'admin123', role: 'admin' }
+  ];
+
+  testAccounts.forEach(account => {
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(account.email);
+    if (!existing) {
+      const hashedPassword = hashPassword(account.password);
+      db.prepare(
+        'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)'
+      ).run(account.username, account.email, hashedPassword, account.role);
+      console.log(`Test account created: ${account.email}`);
+    }
+  });
+
+  // Create a test team for manager
+  const manager = db.prepare('SELECT id FROM users WHERE email = ?').get('manager@test.com');
+  if (manager) {
+    const existingTeam = db.prepare('SELECT id FROM teams WHERE owner_id = ?').get(manager.id);
+    if (!existingTeam) {
+      const teamId = 'team_test_demo';
+      const joinCode = 'TESTCODE';
+      db.prepare(
+        'INSERT OR IGNORE INTO teams (id, name, tag, join_code, owner_id) VALUES (?, ?, ?, ?, ?)'
+      ).run(teamId, 'Team Demo', 'DEMO', joinCode, manager.id);
+      db.prepare(
+        'INSERT OR IGNORE INTO team_users (team_id, user_id, role, membership_type) VALUES (?, ?, ?, ?)'
+      ).run(teamId, manager.id, 'owner', 'manager');
+      console.log('Test team created with code: TESTCODE');
+    }
+  }
+};
+
+createTestAccounts();
+
 // ============ AUTH MIDDLEWARE ============
 const authenticateToken = (req, res, next) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -282,7 +322,7 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 6 caracteres' });
   }
 
-  const validRoles = ['joueur', 'manager', 'coach'];
+  const validRoles = ['joueur', 'manager', 'coach', 'admin'];
   const userRole = validRoles.includes(role) ? role : 'joueur';
 
   try {
@@ -347,6 +387,31 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
 // Get current user
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   res.json({ user: req.user });
+});
+
+// ============ ADMIN ROUTES ============
+
+// Get all users (admin only)
+app.get('/api/admin/users', authenticateToken, (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Acces refuse' });
+  }
+
+  const users = db.prepare(`
+    SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC
+  `).all();
+
+  res.json(users);
+});
+
+// Delete user (admin only)
+app.delete('/api/admin/users/:userId', authenticateToken, (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Acces refuse' });
+  }
+
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.userId);
+  res.json({ success: true });
 });
 
 // ============ TEAMS ROUTES ============
@@ -446,6 +511,19 @@ app.post('/api/teams/:teamId/invite', authenticateToken, checkTeamAccess, (req, 
   } catch (error) {
     res.status(400).json({ error: 'Utilisateur deja dans l\'equipe' });
   }
+});
+
+// Remove member from team
+app.delete('/api/teams/:teamId/members/:userId', authenticateToken, checkTeamAccess, (req, res) => {
+  const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(req.params.teamId);
+
+  // Can't remove owner
+  if (parseInt(req.params.userId) === team.owner_id) {
+    return res.status(400).json({ error: 'Impossible de retirer le proprietaire' });
+  }
+
+  db.prepare('DELETE FROM team_users WHERE team_id = ? AND user_id = ?').run(req.params.teamId, req.params.userId);
+  res.json({ success: true });
 });
 
 // Join team by code

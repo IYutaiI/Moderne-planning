@@ -13,7 +13,9 @@ import {
   Copy,
   Check,
   Trophy,
-  ClipboardList
+  ClipboardList,
+  Settings,
+  Shield
 } from 'lucide-react'
 import TeamSelector from './TeamSelector'
 import { useTeam } from '../context/TeamContext'
@@ -30,7 +32,8 @@ const navItems = [
 const roleLabels = {
   joueur: { label: 'Joueur', color: 'text-yellow-400 bg-yellow-500/20', icon: Trophy },
   manager: { label: 'Manager', color: 'text-blue-400 bg-blue-500/20', icon: ClipboardList },
-  coach: { label: 'Coach', color: 'text-green-400 bg-green-500/20', icon: Users }
+  coach: { label: 'Coach', color: 'text-green-400 bg-green-500/20', icon: Users },
+  admin: { label: 'Admin', color: 'text-red-400 bg-red-500/20', icon: Shield }
 }
 
 function Sidebar({ onJoinTeam }) {
@@ -119,6 +122,23 @@ function Sidebar({ onJoinTeam }) {
             <span className="font-medium">{label}</span>
           </NavLink>
         ))}
+
+        {/* Admin link for managers/coaches/admins */}
+        {user?.role && user.role !== 'joueur' && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                isActive
+                  ? 'bg-purple-600/20 text-purple-400'
+                  : 'text-lol-dark-400 hover:bg-lol-dark-800 hover:text-white'
+              }`
+            }
+          >
+            <Settings className="w-5 h-5" />
+            <span className="font-medium">Administration</span>
+          </NavLink>
+        )}
       </nav>
 
       {/* User Info & Logout */}
